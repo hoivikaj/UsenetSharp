@@ -7,7 +7,6 @@
         <AnalysisLevel>latest</AnalysisLevel>
 
         <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
-        <NuGetLockFilePath>$(MSBuildThisFileDirectory)packages.$(MSBuildProjectName).lock.json</NuGetLockFilePath>
         <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>
         <NuGetAudit>true</NuGetAudit>
         <NuGetAuditMode>all</NuGetAuditMode>
