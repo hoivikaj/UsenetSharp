@@ -1,19 +1,18 @@
-name: Publish Package
+name: CI
 
 on:
-  release:
-    types:
-      - published
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write
-  attestations: write
-  id-token: write
 
 concurrency:
-  group: publish-${{ github.event.release.tag_name }}
-  cancel-in-progress: false
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
@@ -21,25 +20,17 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
 
 jobs:
-  publish:
+  build-test-pack:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check out release tag
+      - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          ref: ${{ github.event.release.tag_name }}
 
       - name: Set up .NET
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 9.0.x
-
-      - name: Verify release version
-        shell: bash
-        run: |
-          version="$(dotnet msbuild UsenetSharp/UsenetSharp.csproj -getProperty:Version)"
-          test "${{ github.event.release.tag_name }}" = "v${version}"
 
       - name: Restore locked dependencies
         run: dotnet restore UsenetSharp.sln --locked-mode
@@ -47,8 +38,23 @@ jobs:
       - name: Build
         run: dotnet build UsenetSharp.sln --configuration Release --no-restore
 
+      - name: Verify whitespace
+        run: dotnet format whitespace UsenetSharp.sln --verify-no-changes --no-restore
+
+      - name: Verify code style
+        run: dotnet format style UsenetSharp.sln --verify-no-changes --no-restore --severity warn
+
       - name: Run deterministic tests
-        run: dotnet test UsenetSharp.sln --configuration Release --no-build --filter "TestCategory!=Integration"
+        run: dotnet test UsenetSharp.sln --configuration Release --no-build --filter "TestCategory!=Integration" --logger "trx;LogFileName=test-results.trx" --collect "XPlat Code Coverage"
+
+      - name: Upload test results and coverage
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-results
+          path: "**/TestResults/**"
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Pack
         run: dotnet pack UsenetSharp/UsenetSharp.csproj --configuration Release --no-build --output artifacts
@@ -79,18 +85,10 @@ jobs:
               assert "lib/net9.0/UsenetSharp.pdb" in symbol_package.namelist()
           PY
 
-      - name: Upload release packages
+      - name: Upload package artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: packages-${{ github.event.release.tag_name }}
+          name: packages
           path: artifacts/*
           if-no-files-found: error
-          retention-days: 30
-
-      - name: Attest package provenance
-        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
-        with:
-          subject-path: artifacts/*
-
-      - name: Publish to GitHub Packages
-        run: dotnet nuget push "artifacts/*.nupkg" --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --api-key "${{ secrets.GITHUB_TOKEN }}" --skip-duplicate
+          retention-days: 7

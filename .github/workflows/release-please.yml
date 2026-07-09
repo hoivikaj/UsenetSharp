@@ -7,26 +7,22 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+
+concurrency:
+  group: release-please-main
+  cancel-in-progress: false
 
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-      - uses: googleapis/release-please-action@v5
+      - name: Create or update release
+        uses: googleapis/release-please-action@0dfd8538845b8e92600d271a895a5372865d4062 # v5
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/checkout@v7
-        if: ${{ steps.release.outputs.release_created }}
-        with:
-          ref: ${{ steps.release.outputs.tag_name }}
-      - name: Update rolling version tags
-        if: ${{ steps.release.outputs.release_created }}
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git tag --force --annotate v${{ steps.release.outputs.major }} --message "Release v${{ steps.release.outputs.major }}" ${{ steps.release.outputs.tag_name }}
-          git tag --force --annotate v${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }} --message "Release v${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}" ${{ steps.release.outputs.tag_name }}
-          git push --force origin v${{ steps.release.outputs.major }} v${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}
