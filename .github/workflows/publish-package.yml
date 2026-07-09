@@ -1,0 +1,27 @@
+name: Publish Package
+
+on:
+  release:
+    types:
+      - published
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+      - name: Restore dependencies
+        run: dotnet restore UsenetSharp/UsenetSharp.csproj
+      - name: Build package
+        run: dotnet pack UsenetSharp/UsenetSharp.csproj --configuration Release --no-restore --output ./artifacts
+      - name: Publish to GitHub Packages
+        run: dotnet nuget push "./artifacts/*.nupkg" --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --api-key "${{ secrets.GITHUB_TOKEN }}" --skip-duplicate
