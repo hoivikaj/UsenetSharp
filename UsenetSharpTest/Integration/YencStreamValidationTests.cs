@@ -1,6 +1,6 @@
-using UsenetSharp.Clients;
 using Usenet.Nntp;
 using Usenet.Yenc;
+using UsenetSharp.Clients;
 using OurYencStream = UsenetSharp.Streams.YencStream;
 using UsenetYencStream = Usenet.Yenc.YencStream;
 

@@ -1,5 +1,5 @@
-using UsenetSharp.Streams;
 using System.Text;
+using UsenetSharp.Streams;
 
 namespace UsenetSharpTest.Streams;
 
@@ -186,5 +186,27 @@ public class YencStreamTests
 
         // Assert
         Assert.That(bytesRead, Is.EqualTo(0));
+    }
+
+    [Test]
+    public async Task YencStream_LongEncodedLine_DecodesCorrectly()
+    {
+        var original = Enumerable.Range(0, 4096).Select(index => (byte)(index % 251)).ToArray();
+        int? column = 0;
+        var encoded = RapidYencSharp.YencEncoder.EncodeEx(original, ref column, 4096, true);
+        using var source = new MemoryStream();
+        await source.WriteAsync(Encoding.ASCII.GetBytes(
+            $"=ybegin line=4096 size={original.Length} name=long.bin\r\n"));
+        await source.WriteAsync(encoded);
+        await source.WriteAsync(Encoding.ASCII.GetBytes(
+            $"\r\n=yend size={original.Length}\r\n"));
+        source.Position = 0;
+        using var yencStream = new YencStream(source, leaveOpen: true);
+        using var decoded = new MemoryStream();
+
+        await yencStream.CopyToAsync(decoded);
+
+        Assert.That(decoded.ToArray(), Is.EqualTo(original));
+        Assert.That(source.CanRead, Is.True);
     }
 }
