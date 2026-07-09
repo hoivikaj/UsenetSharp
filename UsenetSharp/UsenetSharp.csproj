@@ -9,13 +9,24 @@
         <PackageId>UsenetSharp</PackageId>
         <Version>1.0.6</Version>
         <Authors>UsenetSharp Contributors</Authors>
-        <Description>A high-performance .NET library for Usenet NNTP protocol with yEnc support</Description>
-        <PackageTags>usenet;nntp;yenc</PackageTags>
-        <PackageProjectUrl>https://github.com/nzbdav-dev/UsenetSharp</PackageProjectUrl>
-        <PackageLicenseFile>LICENSE</PackageLicenseFile>
-        <RepositoryUrl>https://github.com/nzbdav-dev/UsenetSharp</RepositoryUrl>
+        <Title>UsenetSharp</Title>
+        <Description>Asynchronous, read-only NNTP access and streaming yEnc decoding for .NET.</Description>
+        <PackageTags>usenet;nntp;yenc;networking</PackageTags>
+        <PackageProjectUrl>https://github.com/hoivikaj/UsenetSharp</PackageProjectUrl>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <RepositoryUrl>https://github.com/hoivikaj/UsenetSharp.git</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+
+        <!-- Reproducible packages, SourceLink, and symbol packages -->
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <EnablePackageValidation>true</EnablePackageValidation>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <NoWarn>$(NoWarn);CS1591</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
@@ -23,10 +34,13 @@
         <None Include="../README.md" Pack="true" PackagePath="\" />
         <!-- Include LICENSE in NuGet package -->
         <None Include="../LICENSE" Pack="true" PackagePath="\" />
+        <!-- Include release history in NuGet package -->
+        <None Include="../CHANGELOG.md" Pack="true" PackagePath="\" />
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="RapidYencSharp" Version="1.0.0" />
+        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+        <PackageReference Include="RapidYencSharp" Version="1.0.0" />
     </ItemGroup>
 
 </Project>

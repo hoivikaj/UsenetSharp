@@ -1,18 +1,51 @@
-#####################
-# non-project files #
-#####################
+# Build output
+[Bb]in/
+[Oo]bj/
+[Aa]rtifacts/
+[Ll]og/
+[Ll]ogs/
+[Tt]est[Rr]esult*/
+coverage/
+coverage.*
+BenchmarkDotNet.Artifacts/
 
-bin/
-obj/
-/packages/
-riderModule.iml
-/_ReSharper.Caches/
-*.DotSettings.user
-nuget
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+*.nuget.props
+*.nuget.targets
 
-##############
-# IDE config #
-##############
-
-.idea/
+# Visual Studio and VS Code
+.vs/
 .vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# JetBrains
+.idea/
+*.sln.iml
+*.DotSettings.user
+_ReSharper.Caches/
+
+# macOS and Windows
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+secrets.json
+credentials.json
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
