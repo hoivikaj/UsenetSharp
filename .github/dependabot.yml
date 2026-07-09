@@ -1,0 +1,11 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "fix(deps)"
+    open-pull-requests-limit: 15
