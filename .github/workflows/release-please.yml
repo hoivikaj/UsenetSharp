@@ -18,7 +18,7 @@ jobs:
         id: release
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: ${{ steps.release.outputs.release_created }}
         with:
           ref: ${{ steps.release.outputs.tag_name }}
