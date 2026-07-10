@@ -6,7 +6,7 @@ namespace UsenetSharp.Clients;
 
 internal sealed class NntpLineReader(Stream stream, int maximumLineLength = 64 * 1024) : IDisposable
 {
-    private const int BufferSize = 8192;
+    private const int BufferSize = 64 * 1024;
     private readonly byte[] _buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
     private byte[]? _lineBuffer;
     private int _lineBufferLength;
