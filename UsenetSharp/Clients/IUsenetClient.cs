@@ -26,6 +26,13 @@ public interface IUsenetClient
     Task<UsenetBodyResponse> BodyAsync(
         SegmentId segmentId, Action<ArticleBodyResult>? onConnectionReadyAgain, CancellationToken cancellationToken);
 
+    Task<UsenetDecodedBodyResponse> DecodedBodyAsync(
+        SegmentId segmentId, CancellationToken cancellationToken);
+
+    Task<UsenetDecodedBodyResponse> DecodedBodyAsync(
+        SegmentId segmentId, Action<ArticleBodyResult>? onConnectionReadyAgain,
+        CancellationToken cancellationToken);
+
     Task<UsenetArticleResponse> ArticleAsync(
         SegmentId segmentId, CancellationToken cancellationToken);
 

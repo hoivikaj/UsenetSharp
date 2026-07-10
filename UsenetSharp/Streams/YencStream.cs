@@ -13,6 +13,7 @@ public class YencStream : FastReadOnlyNonSeekableStream
 {
     private readonly Stream _innerStream;
     private readonly bool _leaveOpen;
+    private readonly Task<UsenetYencHeader?>? _predecodedHeaders;
 
     // Header state
     private bool _headersRead;
@@ -60,11 +61,24 @@ public class YencStream : FastReadOnlyNonSeekableStream
         _lineAssemblyBuffer = ArrayPool<byte>.Shared.Rent(LineAssemblyBufferSize);
     }
 
+    internal YencStream(
+        Stream decodedStream,
+        Task<UsenetYencHeader?> predecodedHeaders)
+    {
+        _innerStream = decodedStream;
+        _predecodedHeaders = predecodedHeaders;
+    }
+
     /// <summary>
     /// Gets the yEnc headers from the stream. If headers haven't been read yet, reads and parses them asynchronously.
     /// </summary>
     public virtual async ValueTask<UsenetYencHeader?> GetYencHeadersAsync(CancellationToken cancellationToken = default)
     {
+        if (_predecodedHeaders != null)
+        {
+            return await _predecodedHeaders.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         if (!_headersRead)
         {
             await ParseHeadersAsync(cancellationToken);
@@ -76,6 +90,11 @@ public class YencStream : FastReadOnlyNonSeekableStream
 
     public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
+        if (_predecodedHeaders != null)
+        {
+            return await _innerStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+        }
+
         // Parse headers on first read
         if (!_headersRead)
         {
@@ -319,16 +338,16 @@ public class YencStream : FastReadOnlyNonSeekableStream
         _yencHeaders = ParseYencHeaders(ybeginLine, ypartLine);
     }
 
-    private static bool StartsWithYBegin(ReadOnlySpan<byte> line) =>
+    internal static bool StartsWithYBegin(ReadOnlySpan<byte> line) =>
         line.Length >= 7 && line.Slice(0, 7).SequenceEqual("=ybegin"u8);
 
-    private static bool StartsWithYPart(ReadOnlySpan<byte> line) =>
+    internal static bool StartsWithYPart(ReadOnlySpan<byte> line) =>
         line.Length >= 6 && line.Slice(0, 6).SequenceEqual("=ypart"u8);
 
-    private static bool StartsWithYEnd(ReadOnlySpan<byte> line) =>
+    internal static bool StartsWithYEnd(ReadOnlySpan<byte> line) =>
         line.Length >= 5 && line.Slice(0, 5).SequenceEqual("=yend"u8);
 
-    private static UsenetYencHeader ParseYencHeaders(string ybeginLine, string? ypartLine)
+    internal static UsenetYencHeader ParseYencHeaders(string ybeginLine, string? ypartLine)
     {
         // Parse =ybegin line
         // Format: =ybegin part=123 total=123 line=123 size=123 name=filename.bin
