@@ -103,6 +103,7 @@ public partial class UsenetClient
 
             var shouldWrite = true;
             var cancellationToken = operationCts.Token;
+            using var readTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
 
             // Read lines until we encounter the termination sequence (single dot on a line)
             while (true)
@@ -110,7 +111,7 @@ public partial class UsenetClient
                 ReadOnlyMemory<byte>? lineMemory;
                 try
                 {
-                    lineMemory = await ReadLineBytesAsync(cancellationToken).ConfigureAwait(false);
+                    lineMemory = await ReadLineBytesAsync(readTimeoutCts, cancellationToken).ConfigureAwait(false);
                 }
                 catch (IOException)
                 {

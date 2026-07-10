@@ -128,6 +128,28 @@ public class UsenetClientDeterministicTests
     }
 
     [Test]
+    public async Task BodyAsync_StalledTransferTimesOutAndReportsNotRetrieved()
+    {
+        await using var server = new ScriptedNntpServer(async (_, writer, cancellationToken) =>
+        {
+            await writer.WriteAsync("222 body follows\r\npartial");
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+        var completion = new TaskCompletionSource<ArticleBodyResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var response = await client.BodyAsync(
+            "article@example.com", completion.SetResult, CancellationToken.None);
+
+        Assert.ThrowsAsync<TimeoutException>(async () =>
+            await response.Stream!.CopyToAsync(Stream.Null).WaitAsync(TimeSpan.FromSeconds(12)));
+        Assert.That(await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.EqualTo(ArticleBodyResult.NotRetrieved));
+    }
+
+    [Test]
     public async Task OversizedResponseLine_IsRejected()
     {
         await using var server = new ScriptedNntpServer(async (_, writer, _) =>
