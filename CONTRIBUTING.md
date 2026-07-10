@@ -46,4 +46,4 @@ Release Please maintains a release pull request. Merging that pull request
 updates `.release-please-manifest.json` and the `<Version>` in
 `UsenetSharp/UsenetSharp.csproj`, then creates an immutable `vX.Y.Z` tag and a
 GitHub release. The release event builds, tests, validates, and publishes the
-package to GitHub Packages. Maintainers should not manually move release tags.
+package to NuGet.org. Maintainers should not manually move release tags.

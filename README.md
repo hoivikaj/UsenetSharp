@@ -13,25 +13,17 @@ streaming yEnc decoding.
 
 ## Installation
 
-Packages are currently published to GitHub Packages, not nuget.org. GitHub's
-NuGet registry requires authentication, including for public packages. Create a
-personal access token with `read:packages`, then add the repository owner as a
-package source:
+Install from [NuGet.org](https://www.nuget.org/packages/NzbDav.UsenetSharp):
 
 ```bash
-dotnet nuget add source \
-  "https://nuget.pkg.github.com/nzbdav/index.json" \
-  --name github \
-  --username YOUR_GITHUB_USERNAME \
-  --password "$GITHUB_PACKAGES_TOKEN" \
-  --store-password-in-clear-text
-
-dotnet add package UsenetSharp --source github
+dotnet add package NzbDav.UsenetSharp
 ```
 
-Avoid putting a token directly in a checked-in `NuGet.config`. See GitHub's
-[NuGet registry documentation](https://docs.github.com/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry)
-for credential-storage options.
+Or add a package reference in your project file:
+
+```xml
+<PackageReference Include="NzbDav.UsenetSharp" Version="1.2.3" />
+```
 
 ## Usage
 
