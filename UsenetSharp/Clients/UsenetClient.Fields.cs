@@ -13,5 +13,6 @@ public partial class UsenetClient
     private readonly AsyncSemaphore _commandLock = new(1);
     private CancellationTokenSource _connectionCts = new();
     private readonly object _connectionCtsLock = new();
+    private readonly object _stateLock = new();
     private volatile ExceptionDispatchInfo? _backgroundException;
 }

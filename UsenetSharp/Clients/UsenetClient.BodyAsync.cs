@@ -159,7 +159,7 @@ public partial class UsenetClient
         catch (Exception e)
         {
             failure = e;
-            lock (this)
+            lock (_stateLock)
             {
                 _backgroundException = ExceptionDispatchInfo.Capture(e);
             }

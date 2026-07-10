@@ -17,19 +17,35 @@ public partial class UsenetClient
             }
         }
 
-        _reader?.Dispose();
-        _writer?.Dispose();
-        _stream?.Dispose();
-        _tcpClient?.Dispose();
+        DisposeConnectionResource(_reader);
+        DisposeConnectionResource(_writer);
+        DisposeConnectionResource(_stream);
+        DisposeConnectionResource(_tcpClient);
 
         _reader = null;
         _writer = null;
         _stream = null;
         _tcpClient = null;
 
-        lock (this)
+        lock (_stateLock)
         {
             _backgroundException = null;
+        }
+    }
+
+    private static void DisposeConnectionResource(IDisposable? resource)
+    {
+        try
+        {
+            resource?.Dispose();
+        }
+        catch (IOException)
+        {
+            // A failed connection may also fail while flushing or closing.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Concurrent network cancellation may have already closed the resource.
         }
     }
 
@@ -63,7 +79,7 @@ public partial class UsenetClient
 
     private void ThrowIfUnhealthy()
     {
-        lock (this)
+        lock (_stateLock)
         {
             _backgroundException?.Throw();
         }
