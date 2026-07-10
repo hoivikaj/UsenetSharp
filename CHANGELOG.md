@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.0](https://github.com/nzbdav/UsenetSharp/compare/v1.1.0...v1.2.0) (2026-07-10)
+
+
+### Features
+
+* **nntp:** make certificate revocation checks configurable ([60cc2c5](https://github.com/nzbdav/UsenetSharp/commit/60cc2c5d03e6bd58ea85305fd641162c44e3f4fe))
+* **nntp:** pipeline decoded BODY commands ([144c8a1](https://github.com/nzbdav/UsenetSharp/commit/144c8a1ac08281265c86d8efb9817022bee38a74))
+
 ## [1.1.0](https://github.com/nzbdav/UsenetSharp/compare/v1.0.8...v1.1.0) (2026-07-10)
 
 
