@@ -1,3 +1,4 @@
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using UsenetSharp.Clients;
 using UsenetSharp.Exceptions;
@@ -475,6 +476,29 @@ public class UsenetClientDeterministicTests
     }
 
     [Test]
+    public void Options_DefaultCertificateRevocationCheckModeIsNoCheck()
+    {
+        Assert.That(
+            new UsenetClientOptions().CertificateRevocationCheckMode,
+            Is.EqualTo(X509RevocationMode.NoCheck));
+    }
+
+    [TestCase(X509RevocationMode.NoCheck)]
+    [TestCase(X509RevocationMode.Offline)]
+    [TestCase(X509RevocationMode.Online)]
+    public void Constructor_AcceptsDefinedCertificateRevocationCheckMode(
+        X509RevocationMode certificateRevocationCheckMode)
+    {
+        Assert.DoesNotThrow(() =>
+        {
+            using var client = new UsenetClient(new UsenetClientOptions
+            {
+                CertificateRevocationCheckMode = certificateRevocationCheckMode
+            });
+        });
+    }
+
+    [Test]
     public void Constructor_RejectsInvalidOptions()
     {
         Assert.Multiple(() =>
@@ -483,6 +507,11 @@ public class UsenetClientDeterministicTests
                 new UsenetClient(new UsenetClientOptions { ReadTimeout = TimeSpan.Zero }));
             Assert.Throws<ArgumentOutOfRangeException>(() =>
                 new UsenetClient(new UsenetClientOptions { AbandonedBodyDrainLimit = -1 }));
+            Assert.Throws<ArgumentOutOfRangeException>(() =>
+                new UsenetClient(new UsenetClientOptions
+                {
+                    CertificateRevocationCheckMode = (X509RevocationMode)(-1)
+                }));
         });
     }
 

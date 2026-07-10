@@ -30,6 +30,12 @@ public partial class UsenetClient : IUsenetClient, IDisposable, IAsyncDisposable
                 nameof(options), "AbandonedBodyDrainLimit cannot be negative.");
         }
 
+        if (!Enum.IsDefined(options.CertificateRevocationCheckMode))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options), "CertificateRevocationCheckMode must be a defined X509RevocationMode value.");
+        }
+
         _options = options;
         _timeProvider = timeProvider;
     }

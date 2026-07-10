@@ -1,7 +1,9 @@
+using System.Security.Cryptography.X509Certificates;
+
 namespace UsenetSharp.Clients;
 
 /// <summary>
-/// Configures NNTP operation timeouts and connection reuse behavior.
+/// Configures NNTP operation timeouts, TLS validation, and connection reuse behavior.
 /// </summary>
 public sealed record UsenetClientOptions
 {
@@ -24,4 +26,15 @@ public sealed record UsenetClientOptions
     /// mismatched CRC32 value fails the decoded response stream.
     /// </remarks>
     public bool ValidateDecodedBodyCrc32 { get; init; }
+
+    /// <summary>
+    /// Gets the certificate revocation mode used when establishing TLS connections.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see cref="X509RevocationMode.NoCheck"/> to avoid revocation lookup
+    /// latency during frequent streaming reconnects. Platform certificate chain and
+    /// hostname validation remain enabled for every mode.
+    /// </remarks>
+    public X509RevocationMode CertificateRevocationCheckMode { get; init; } =
+        X509RevocationMode.NoCheck;
 }

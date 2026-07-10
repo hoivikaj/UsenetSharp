@@ -59,9 +59,26 @@ if (!authentication.Success)
 }
 ```
 
-TLS uses the platform's normal certificate validation. Credentials sent with
-`useSsl: false` travel in plaintext; only use an unencrypted connection on a
-network you trust.
+TLS always uses the platform's normal certificate chain and hostname validation.
+Certificate revocation checking defaults to `X509RevocationMode.NoCheck` to avoid
+revocation lookup latency during frequent streaming reconnects. Applications
+that require revocation checking can enable it when constructing the client:
+
+```csharp
+using System.Security.Cryptography.X509Certificates;
+
+using var client = new UsenetClient(new UsenetClientOptions
+{
+    CertificateRevocationCheckMode = X509RevocationMode.Online
+});
+```
+
+`Online` provides current revocation information when the platform can obtain
+it, but can add connection latency and make reconnects depend on revocation
+responder availability. `Offline` uses locally cached revocation information.
+The selected mode changes only revocation checking; normal platform certificate
+and hostname validation remains enabled. Credentials sent with `useSsl: false`
+travel in plaintext; only use an unencrypted connection on a network you trust.
 
 ### Retrieve an article body
 

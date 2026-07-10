@@ -40,7 +40,7 @@ public partial class UsenetClient
                     TargetHost = host,
                     EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 |
                                           System.Security.Authentication.SslProtocols.Tls13,
-                    CertificateRevocationCheckMode = System.Security.Cryptography.X509Certificates.X509RevocationMode.Online
+                    CertificateRevocationCheckMode = _options.CertificateRevocationCheckMode
                 }, operationCts.Token).ConfigureAwait(false);
                 _stream = sslStream;
             }
