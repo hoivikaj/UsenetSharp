@@ -19,7 +19,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
   attestations: write
   id-token: write
 
@@ -105,5 +104,11 @@ jobs:
         with:
           subject-path: artifacts/*
 
-      - name: Publish to GitHub Packages
-        run: dotnet nuget push "artifacts/*.nupkg" --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" --api-key "${{ secrets.GITHUB_TOKEN }}" --skip-duplicate
+      - name: Log in to NuGet.org
+        uses: NuGet/login@ebc737b6fc418a6ca0073cf116ec8dc156d8b81e # v1
+        id: login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
+      - name: Publish to NuGet.org
+        run: dotnet nuget push "artifacts/*.nupkg" --source "https://api.nuget.org/v3/index.json" --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --skip-duplicate

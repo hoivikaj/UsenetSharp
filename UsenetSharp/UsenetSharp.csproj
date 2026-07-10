@@ -6,7 +6,7 @@
         <Nullable>enable</Nullable>
 
         <!-- Package Information -->
-        <PackageId>UsenetSharp</PackageId>
+        <PackageId>NzbDav.UsenetSharp</PackageId>
         <Version>1.2.2</Version>
         <Authors>UsenetSharp Contributors</Authors>
         <Title>UsenetSharp</Title>

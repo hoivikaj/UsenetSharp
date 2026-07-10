@@ -174,7 +174,7 @@
           "System.Collections.Immutable": "8.0.0"
         }
       },
-      "usenetsharp": {
+      "NzbDav.UsenetSharp": {
         "type": "Project",
         "dependencies": {
           "RapidYencSharp": "[1.0.0, )"
