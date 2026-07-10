@@ -373,7 +373,7 @@ public class UsenetClientDeterministicTests
 
         Assert.ThrowsAsync<OperationCanceledException>(async () => await copyTask);
         Assert.That(await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
-            Is.EqualTo(ArticleBodyResult.NotRetrieved));
+            Is.EqualTo(ArticleBodyResult.Cancelled));
         var date = await client.DateAsync(CancellationToken.None);
         Assert.That(date.ResponseCode, Is.EqualTo((int)UsenetResponseType.DateAndTime));
         Assert.That(client.IsHealthy, Is.True);
@@ -581,6 +581,50 @@ public class UsenetClientDeterministicTests
         var date = await client.DateAsync(CancellationToken.None);
         Assert.That(date.ResponseCode, Is.EqualTo((int)UsenetResponseType.DateAndTime));
         Assert.That(client.IsHealthy, Is.True);
+    }
+
+    [Test]
+    public async Task DecodedBodiesAsync_CancellationWithFailedCurrentDrainReportsNotRetrieved()
+    {
+        var partialBodySent = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var closeConnection = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = ScriptedNntpServer.StartConnectionScript(
+            async (reader, writer, cancellationToken) =>
+            {
+                _ = await reader.ReadLineAsync(cancellationToken);
+                await writer.WriteAsync(
+                    "222 body follows\r\n" +
+                    "=ybegin line=128 size=2 name=first.bin\r\n" +
+                    "k\r\n");
+                partialBodySent.SetResult();
+                await closeConnection.Task.WaitAsync(cancellationToken);
+            });
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            ReadTimeout = TimeSpan.FromSeconds(1),
+            AbandonedBodyDrainLimit = 1024
+        });
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+        using var cts = new CancellationTokenSource();
+        var completion = new TaskCompletionSource<ArticleBodyResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var batch = await client.DecodedBodiesAsync(
+            new SegmentId[] { "first@example.com" },
+            completion.SetResult,
+            cts.Token);
+        var response = await batch.Responses[0];
+        var copyTask = response.Stream!.CopyToAsync(Stream.Null);
+        await partialBodySent.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cts.Cancel();
+        closeConnection.SetResult();
+
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await copyTask);
+        Assert.That(await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.EqualTo(ArticleBodyResult.NotRetrieved));
+        Assert.That(client.IsHealthy, Is.False);
     }
 
     [Test]

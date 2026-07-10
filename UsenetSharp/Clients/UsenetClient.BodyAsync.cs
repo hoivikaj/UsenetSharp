@@ -184,7 +184,7 @@ public partial class UsenetClient
         }
     }
 
-    private async Task<Exception?> ReadDecodedBodyToPipeAsync(
+    private async Task<DecodedBodyReadResult> ReadDecodedBodyToPipeAsync(
         PipeWriter writer,
         TaskCompletionSource<UsenetYencHeader?> headersCompletion,
         CancellationTokenSource operationCts,
@@ -193,6 +193,7 @@ public partial class UsenetClient
         bool releaseCommandLock = true)
     {
         Exception? failure = null;
+        var connectionReusable = true;
         byte[]? encodedBuffer = null;
         try
         {
@@ -397,12 +398,14 @@ public partial class UsenetClient
             var drainFailure = await TryDrainBodyAsync().ConfigureAwait(false);
             if (drainFailure != null)
             {
+                connectionReusable = false;
                 RecordBackgroundFailure(drainFailure);
             }
         }
         catch (Exception e)
         {
             failure = e;
+            connectionReusable = false;
             RecordBackgroundFailure(e);
         }
         finally
@@ -426,8 +429,14 @@ public partial class UsenetClient
 
             try
             {
-                onConnectionReadyAgain?.Invoke(
-                    failure == null ? ArticleBodyResult.Retrieved : ArticleBodyResult.NotRetrieved);
+                var result = failure switch
+                {
+                    null => ArticleBodyResult.Retrieved,
+                    OperationCanceledException when connectionReusable =>
+                        ArticleBodyResult.Cancelled,
+                    _ => ArticleBodyResult.NotRetrieved
+                };
+                onConnectionReadyAgain?.Invoke(result);
             }
             catch
             {
@@ -435,8 +444,12 @@ public partial class UsenetClient
             }
         }
 
-        return failure;
+        return new DecodedBodyReadResult(failure, connectionReusable);
     }
+
+    private readonly record struct DecodedBodyReadResult(
+        Exception? Failure,
+        bool ConnectionReusable);
 
     private static async ValueTask<(
         FlushResult Result,

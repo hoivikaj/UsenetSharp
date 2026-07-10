@@ -173,7 +173,7 @@ public partial class UsenetClient
                     Stream = new YencStream(pipe.Reader.AsStream(), headersCompletion.Task)
                 });
 
-                var bodyFailure = await ReadDecodedBodyToPipeAsync(
+                var bodyReadResult = await ReadDecodedBodyToPipeAsync(
                         pipe.Writer,
                         headersCompletion,
                         operationCts,
@@ -181,12 +181,12 @@ public partial class UsenetClient
                         onConnectionReadyAgain: null,
                         releaseCommandLock: false)
                     .ConfigureAwait(false);
-                if (bodyFailure == null)
+                if (bodyReadResult.Failure == null)
                 {
                     continue;
                 }
 
-                failure = bodyFailure;
+                failure = bodyReadResult.Failure;
                 nextResponseIndex++;
                 var drainFailure = await TryDrainPipelinedBodiesAsync(
                         segmentIds.Count - nextResponseIndex)
@@ -197,8 +197,9 @@ public partial class UsenetClient
                 }
 
                 completionResult =
-                    bodyFailure is OperationCanceledException &&
+                    bodyReadResult.Failure is OperationCanceledException &&
                     callerCancellationToken.IsCancellationRequested &&
+                    bodyReadResult.ConnectionReusable &&
                     drainFailure == null
                         ? ArticleBodyResult.Cancelled
                         : ArticleBodyResult.NotRetrieved;
