@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/nzbdav/UsenetSharp/compare/v1.2.1...v1.2.2) (2026-07-10)
+
+
+### Bug Fixes
+
+* **nntp:** accept derived cancellation exceptions ([303ea28](https://github.com/nzbdav/UsenetSharp/commit/303ea282af8a6db15419816fa567456e1f915645))
+
 ## [1.2.1](https://github.com/nzbdav/UsenetSharp/compare/v1.2.0...v1.2.1) (2026-07-10)
 
 
