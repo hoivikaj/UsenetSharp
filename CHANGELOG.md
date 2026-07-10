@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.3](https://github.com/nzbdav/UsenetSharp/compare/v1.2.2...v1.2.3) (2026-07-10)
+
+
+### Bug Fixes
+
+* **release:** publish package through NuGet.org ([e7ba60e](https://github.com/nzbdav/UsenetSharp/commit/e7ba60e2eadb3df33e48e1fc5811a75a5c2f2aea))
+
 ## [1.2.2](https://github.com/nzbdav/UsenetSharp/compare/v1.2.1...v1.2.2) (2026-07-10)
 
 
