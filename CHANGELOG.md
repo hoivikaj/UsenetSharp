@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.1](https://github.com/nzbdav/UsenetSharp/compare/v1.2.0...v1.2.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* **nntp:** preserve connection health on cancellation ([9d74828](https://github.com/nzbdav/UsenetSharp/commit/9d74828f06e4b357069dd4ed6b2263450fce1ba7))
+
 ## [1.2.0](https://github.com/nzbdav/UsenetSharp/compare/v1.1.0...v1.2.0) (2026-07-10)
 
 
