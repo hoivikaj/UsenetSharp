@@ -208,6 +208,39 @@ public class UsenetClientDeterministicTests
     }
 
     [Test]
+    public async Task DecodedBodyAsync_StalledTransferTimesOutDeterministically()
+    {
+        var timeProvider = new ManualTimeProvider();
+        var readTimeout = TimeSpan.FromSeconds(1);
+        await using var server = new ScriptedNntpServer(async (_, writer, cancellationToken) =>
+        {
+            await writer.WriteAsync(
+                "222 body follows\r\n" +
+                "=ybegin line=128 size=2 name=stalled.bin\r\n" +
+                "k\r\n");
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        });
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            ReadTimeout = readTimeout
+        }, timeProvider);
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+        var completion = new TaskCompletionSource<ArticleBodyResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var response = await client.DecodedBodyAsync(
+            "article@example.com", completion.SetResult, CancellationToken.None);
+        _ = await response.Stream!.GetYencHeadersAsync();
+        var copyTask = response.Stream.CopyToAsync(Stream.Null);
+        timeProvider.Advance(readTimeout);
+
+        Assert.ThrowsAsync<TimeoutException>(async () =>
+            await copyTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.That(await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.EqualTo(ArticleBodyResult.NotRetrieved));
+    }
+
+    [Test]
     public async Task DecodedBodyAsync_CallerCancellationDrainsAndReusesConnection()
     {
         var firstLineSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -284,6 +317,8 @@ public class UsenetClientDeterministicTests
     [Test]
     public async Task BodyAsync_StalledTransferTimesOutAndReportsNotRetrieved()
     {
+        var timeProvider = new ManualTimeProvider();
+        var readTimeout = TimeSpan.FromSeconds(1);
         await using var server = new ScriptedNntpServer(async (_, writer, cancellationToken) =>
         {
             await writer.WriteAsync("222 body follows\r\npartial");
@@ -291,19 +326,61 @@ public class UsenetClientDeterministicTests
         });
         await using var client = new UsenetClient(new UsenetClientOptions
         {
-            ReadTimeout = TimeSpan.FromMilliseconds(100)
-        });
+            ReadTimeout = readTimeout
+        }, timeProvider);
         await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
         var completion = new TaskCompletionSource<ArticleBodyResult>(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         var response = await client.BodyAsync(
             "article@example.com", completion.SetResult, CancellationToken.None);
+        var copyTask = response.Stream!.CopyToAsync(Stream.Null);
+        timeProvider.Advance(readTimeout);
 
         Assert.ThrowsAsync<TimeoutException>(async () =>
-            await response.Stream!.CopyToAsync(Stream.Null).WaitAsync(TimeSpan.FromSeconds(2)));
+            await copyTask.WaitAsync(TimeSpan.FromSeconds(2)));
         Assert.That(await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
             Is.EqualTo(ArticleBodyResult.NotRetrieved));
+    }
+
+    [Test]
+    public async Task BodyAsync_ContinuousProgressBeyondReadTimeout_DoesNotTimeOut()
+    {
+        var timeProvider = new ManualTimeProvider();
+        var bodyChunks = Enumerable.Range(0, 4)
+            .Select(_ => new TaskCompletionSource<string>(
+                TaskCreationOptions.RunContinuationsAsynchronously))
+            .ToArray();
+        await using var server = new ScriptedNntpServer(async (_, writer, cancellationToken) =>
+        {
+            await writer.WriteAsync("222 body follows\r\n");
+            foreach (var bodyChunk in bodyChunks)
+            {
+                await writer.WriteAsync(await bodyChunk.Task.WaitAsync(cancellationToken));
+            }
+        });
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            ReadTimeout = TimeSpan.FromSeconds(1)
+        }, timeProvider);
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var response = await client.BodyAsync(
+            "article@example.com", CancellationToken.None);
+        using var reader = new StreamReader(response.Stream!, Encoding.Latin1);
+        for (var index = 0; index < 3; index++)
+        {
+            timeProvider.Advance(TimeSpan.FromMilliseconds(750));
+            bodyChunks[index].SetResult($"line-{index}\r\n");
+            Assert.That(
+                await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(2)),
+                Is.EqualTo($"line-{index}"));
+        }
+
+        bodyChunks[3].SetResult(".\r\n");
+        Assert.That(
+            await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.Null);
     }
 
     [Test]
@@ -389,6 +466,44 @@ public class UsenetClientDeterministicTests
         var date = await client.DateAsync(CancellationToken.None);
         Assert.That(date.ResponseCode, Is.EqualTo((int)UsenetResponseType.DateAndTime));
         Assert.That(client.IsHealthy, Is.True);
+    }
+
+    [Test]
+    public async Task BodyAsync_CancelledBodyDrainTimesOutDeterministically()
+    {
+        var timeProvider = new ManualTimeProvider();
+        var readTimeout = TimeSpan.FromSeconds(1);
+        await using var server = new ScriptedNntpServer(async (_, writer, cancellationToken) =>
+        {
+            await writer.WriteAsync("222 body follows\r\nfirst\r\n");
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        });
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            ReadTimeout = readTimeout,
+            AbandonedBodyDrainLimit = 1024
+        }, timeProvider);
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+        using var callerCts = new CancellationTokenSource();
+        using var waitCts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var completion = new TaskCompletionSource<ArticleBodyResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var response = await client.BodyAsync(
+            "article@example.com", completion.SetResult, callerCts.Token);
+        using var reader = new StreamReader(response.Stream!, Encoding.Latin1);
+        Assert.That(await reader.ReadLineAsync(), Is.EqualTo("first"));
+        var copyTask = reader.ReadToEndAsync();
+        callerCts.Cancel();
+        await timeProvider.WaitForCreatedTimerCountAsync(2, waitCts.Token);
+        timeProvider.Advance(readTimeout);
+
+        Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await copyTask.WaitAsync(TimeSpan.FromSeconds(2)));
+        Assert.That(await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.EqualTo(ArticleBodyResult.NotRetrieved));
+        Assert.ThrowsAsync<TimeoutException>(() =>
+            client.DateAsync(CancellationToken.None));
     }
 
     [Test]

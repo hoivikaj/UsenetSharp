@@ -5,13 +5,19 @@ public partial class UsenetClient : IUsenetClient, IDisposable, IAsyncDisposable
     private int _disposeState;
 
     public UsenetClient()
-        : this(new UsenetClientOptions())
+        : this(new UsenetClientOptions(), TimeProvider.System)
     {
     }
 
     public UsenetClient(UsenetClientOptions options)
+        : this(options, TimeProvider.System)
+    {
+    }
+
+    internal UsenetClient(UsenetClientOptions options, TimeProvider timeProvider)
     {
         ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(timeProvider);
         if (options.ReadTimeout <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(
@@ -25,6 +31,7 @@ public partial class UsenetClient : IUsenetClient, IDisposable, IAsyncDisposable
         }
 
         _options = options;
+        _timeProvider = timeProvider;
     }
 
     public bool IsConnected =>

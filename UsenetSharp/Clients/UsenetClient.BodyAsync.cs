@@ -210,14 +210,15 @@ public partial class UsenetClient
             string? ypartLine = null;
             RapidYencDecoderState? decoderState = RapidYencDecoderState.RYDEC_STATE_CRLF;
             var cancellationToken = operationCts.Token;
-            using var readTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var readTimeout = new CoalescedReadTimeout(
+                cancellationToken, _options.ReadTimeout, _timeProvider);
 
             while (true)
             {
                 ReadOnlyMemory<byte>? lineMemory;
                 try
                 {
-                    lineMemory = await ReadLineBytesAsync(readTimeoutCts, cancellationToken)
+                    lineMemory = await ReadLineBytesAsync(readTimeout)
                         .ConfigureAwait(false);
                 }
                 catch (IOException)
@@ -437,7 +438,8 @@ public partial class UsenetClient
             var shouldWrite = true;
             long drainedBytes = 0;
             var cancellationToken = operationCts.Token;
-            using var readTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var readTimeout = new CoalescedReadTimeout(
+                cancellationToken, _options.ReadTimeout, _timeProvider);
 
             // Read lines until we encounter the termination sequence (single dot on a line)
             while (true)
@@ -445,7 +447,7 @@ public partial class UsenetClient
                 ReadOnlyMemory<byte>? lineMemory;
                 try
                 {
-                    lineMemory = await ReadLineBytesAsync(readTimeoutCts, cancellationToken).ConfigureAwait(false);
+                    lineMemory = await ReadLineBytesAsync(readTimeout).ConfigureAwait(false);
                 }
                 catch (IOException)
                 {
@@ -536,7 +538,8 @@ public partial class UsenetClient
         try
         {
             using var drainCts = CreateOperationTokenSource(CancellationToken.None);
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(drainCts.Token);
+            using var readTimeout = new CoalescedReadTimeout(
+                drainCts.Token, _options.ReadTimeout, _timeProvider);
             long drainedBytes = 0;
 
             while (true)
@@ -544,7 +547,7 @@ public partial class UsenetClient
                 ReadOnlyMemory<byte>? line;
                 try
                 {
-                    line = await ReadLineBytesAsync(timeoutCts, drainCts.Token).ConfigureAwait(false);
+                    line = await ReadLineBytesAsync(readTimeout).ConfigureAwait(false);
                 }
                 catch (IOException)
                 {

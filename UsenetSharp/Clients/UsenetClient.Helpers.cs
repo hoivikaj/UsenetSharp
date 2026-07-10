@@ -170,25 +170,20 @@ public partial class UsenetClient
     }
 
     private async ValueTask<ReadOnlyMemory<byte>?> ReadLineBytesAsync(
-        CancellationTokenSource timeoutCts,
-        CancellationToken operationToken)
+        CoalescedReadTimeout readTimeout)
     {
-        timeoutCts.CancelAfter(_options.ReadTimeout);
+        readTimeout.BeginRead();
         try
         {
-            return await _reader!.ReadLineBytesAsync(timeoutCts.Token).ConfigureAwait(false);
+            return await _reader!.ReadLineBytesAsync(readTimeout.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (
-            timeoutCts.IsCancellationRequested && !operationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (readTimeout.IsTimeoutCancellation)
         {
             throw new TimeoutException("Timeout reading from NNTP stream.");
         }
         finally
         {
-            if (!timeoutCts.IsCancellationRequested)
-            {
-                timeoutCts.CancelAfter(Timeout.InfiniteTimeSpan);
-            }
+            readTimeout.EndRead();
         }
     }
 
