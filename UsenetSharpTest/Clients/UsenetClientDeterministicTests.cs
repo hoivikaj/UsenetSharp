@@ -159,6 +159,37 @@ public class UsenetClientDeterministicTests
     }
 
     [Test]
+    public async Task DisposeAsync_WithQueuedBody_StillReportsNotRetrieved()
+    {
+        await using var server = new ScriptedNntpServer(async (_, writer, cancellationToken) =>
+        {
+            await writer.WriteAsync("222 body follows\r\npartial");
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        });
+        var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+        var activeCompletion = new TaskCompletionSource<ArticleBodyResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var queuedCompletion = new TaskCompletionSource<ArticleBodyResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        // First body holds the command lock; the second command queues behind it.
+        _ = await client.BodyAsync(
+            "active@example.com", activeCompletion.SetResult, CancellationToken.None);
+        var queuedBody = client.BodyAsync(
+            "queued@example.com", queuedCompletion.SetResult, CancellationToken.None);
+        await Task.Delay(100);
+
+        await client.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.ThrowsAsync<ObjectDisposedException>(() => queuedBody);
+        Assert.That(await queuedCompletion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.EqualTo(ArticleBodyResult.NotRetrieved));
+        Assert.That(await activeCompletion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.EqualTo(ArticleBodyResult.NotRetrieved));
+    }
+
+    [Test]
     public async Task DisposeAsync_CancelsActiveBodyWithoutDeadlock()
     {
         await using var server = new ScriptedNntpServer(async (_, writer, cancellationToken) =>

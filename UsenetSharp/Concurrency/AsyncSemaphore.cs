@@ -63,8 +63,10 @@ public class AsyncSemaphore : IDisposable
         TaskCompletionSource<bool>? toRelease = null;
         lock (_lock)
         {
+            // Tolerate release after disposal so cleanup paths that follow a
+            // Release (e.g. connection-ready callbacks) are never skipped.
             if (_disposed)
-                throw new ObjectDisposedException(nameof(AsyncSemaphore));
+                return;
 
             while (_waiters.Count > 0)
             {

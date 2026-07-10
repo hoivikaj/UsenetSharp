@@ -263,15 +263,15 @@ public class AsyncSemaphoreTests
     }
 
     [Test]
-    public void Release_AfterDispose_ThrowsObjectDisposedException()
+    public void Release_AfterDispose_IsANoOp()
     {
         // Arrange
         var semaphore = new AsyncSemaphore(1);
         semaphore.Dispose();
 
-        // Act & Assert
-        var ex = Assert.Throws<ObjectDisposedException>(() => semaphore.Release());
-        Assert.That(ex!.ObjectName, Is.EqualTo("AsyncSemaphore"));
+        // Act & Assert - Cleanup paths may release after disposal; this must not throw
+        // so callbacks that follow a Release are never skipped.
+        Assert.DoesNotThrow(() => semaphore.Release());
     }
 
     [Test]

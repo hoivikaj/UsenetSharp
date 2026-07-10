@@ -29,7 +29,8 @@ public partial class UsenetClient : IUsenetClient, IDisposable, IAsyncDisposable
         _connectionCts.Cancel();
         _commandLock.WaitAsync().GetAwaiter().GetResult();
         CleanupConnection(createNewLifetime: false);
-        _commandLock.Release();
+        // Dispose the semaphore while still holding it so queued waiters are
+        // faulted instead of being granted a lock that is about to be disposed.
         _commandLock.Dispose();
         GC.SuppressFinalize(this);
     }
@@ -45,7 +46,8 @@ public partial class UsenetClient : IUsenetClient, IDisposable, IAsyncDisposable
         await _connectionCts.CancelAsync().ConfigureAwait(false);
         await _commandLock.WaitAsync().ConfigureAwait(false);
         CleanupConnection(createNewLifetime: false);
-        _commandLock.Release();
+        // Dispose the semaphore while still holding it so queued waiters are
+        // faulted instead of being granted a lock that is about to be disposed.
         _commandLock.Dispose();
         GC.SuppressFinalize(this);
     }
