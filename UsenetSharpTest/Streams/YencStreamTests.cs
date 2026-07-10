@@ -129,6 +129,20 @@ public class YencStreamTests
     }
 
     [Test]
+    public async Task YencStream_EmptyDataLine_DoesNotEndStream()
+    {
+        // 'A' and 'B' encode to 'k' and 'l'; the empty line between them is not EOF.
+        var encoded = Encoding.Latin1.GetBytes(
+            "=ybegin line=128 size=2 name=test.bin\r\nk\r\n\r\nl\r\n=yend size=2\r\n");
+        using var yencStream = new YencStream(new MemoryStream(encoded));
+        using var decoded = new MemoryStream();
+
+        await yencStream.CopyToAsync(decoded);
+
+        Assert.That(Encoding.Latin1.GetString(decoded.ToArray()), Is.EqualTo("AB"));
+    }
+
+    [Test]
     public async Task YencStream_EmptyStream_ThrowsInvalidDataException()
     {
         // Arrange

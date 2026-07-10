@@ -105,13 +105,17 @@ public class YencStream : FastReadOnlyNonSeekableStream
                 // Need to decode next line
                 var lineMemory = await ReadNextLineAsync(cancellationToken);
 
-                if (lineMemory.Length == 0)
+                if (!lineMemory.HasValue)
                 {
                     _endReached = true;
                     break;
                 }
 
-                var lineSpan = lineMemory.Span;
+                var lineSpan = lineMemory.Value.Span;
+                if (lineSpan.IsEmpty)
+                {
+                    continue;
+                }
 
                 // Check for =yend marker
                 if (StartsWithYEnd(lineSpan))
@@ -150,7 +154,7 @@ public class YencStream : FastReadOnlyNonSeekableStream
     /// Reads the next line from the stream using buffered chunked reading.
     /// Handles lines spanning multiple read chunks efficiently.
     /// </summary>
-    private async ValueTask<ReadOnlyMemory<byte>> ReadNextLineAsync(CancellationToken cancellationToken)
+    private async ValueTask<ReadOnlyMemory<byte>?> ReadNextLineAsync(CancellationToken cancellationToken)
     {
         while (true)
         {
@@ -160,7 +164,7 @@ public class YencStream : FastReadOnlyNonSeekableStream
                 bool hasMoreData = await FillReadBufferAsync(cancellationToken);
                 if (!hasMoreData && _lineAssemblyLength == 0)
                 {
-                    return ReadOnlyMemory<byte>.Empty; // EOF
+                    return null;
                 }
 
                 if (!hasMoreData)
@@ -273,20 +277,17 @@ public class YencStream : FastReadOnlyNonSeekableStream
         {
             var lineMemory = await ReadNextLineAsync(cancellationToken);
 
-            if (lineMemory.Length == 0)
+            if (!lineMemory.HasValue)
             {
-                // Distinguish between empty line and EOF
-                // If buffer is exhausted (length is 0), we've hit EOF
-                if (_readBufferLength == 0)
-                {
-                    throw new InvalidDataException("Reached end of stream without finding =ybegin header");
-                }
+                throw new InvalidDataException("Reached end of stream without finding =ybegin header");
+            }
 
-                // Empty line - skip it
+            if (lineMemory.Value.IsEmpty)
+            {
                 continue;
             }
 
-            var lineSpan = lineMemory.Span;
+            var lineSpan = lineMemory.Value.Span;
             if (StartsWithYBegin(lineSpan))
             {
                 ybeginLine = Encoding.Latin1.GetString(lineSpan);
@@ -296,9 +297,9 @@ public class YencStream : FastReadOnlyNonSeekableStream
 
         // Check if next line is =ypart or encoded data
         var nextLineMemory = await ReadNextLineAsync(cancellationToken);
-        if (nextLineMemory.Length > 0)
+        if (nextLineMemory.HasValue && !nextLineMemory.Value.IsEmpty)
         {
-            var nextLineSpan = nextLineMemory.Span;
+            var nextLineSpan = nextLineMemory.Value.Span;
 
             if (StartsWithYPart(nextLineSpan))
             {
