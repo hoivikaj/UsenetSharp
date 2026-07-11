@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.0.1](https://github.com/nzbdav/UsenetSharp/compare/v2.0.0...v2.0.1) (2026-07-11)
+
+
+### Bug Fixes
+
+* **deps:** consume NzbDav.RapidYencSharp 2.0.2 ([b211a31](https://github.com/nzbdav/UsenetSharp/commit/b211a31cf7174e4fe984620640e88c590363403e))
+* **deps:** consume RapidYencSharp 2.0.0 ([1fa6e8a](https://github.com/nzbdav/UsenetSharp/commit/1fa6e8a0a5d38bc1200f828a4de81c487f67b069))
+
 ## [2.0.0](https://github.com/nzbdav/UsenetSharp/compare/v1.2.4...v2.0.0) (2026-07-11)
 
 
