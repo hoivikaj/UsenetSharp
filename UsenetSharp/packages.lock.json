@@ -13,11 +13,11 @@
           "System.IO.Hashing": "10.0.8"
         }
       },
-      "RapidYencSharp": {
+      "NzbDav.RapidYencSharp": {
         "type": "Direct",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "OghjahsZCiGpbQOWlhpjwSG5AvDErGXlv6xPtLgnaosb8Bj9YPZP1nmhAC6YUYv0xCwTW1QDXkXbuOWNCq/+cQ=="
+        "requested": "[2.0.2, )",
+        "resolved": "2.0.2",
+        "contentHash": "NKPpFwFfKbm0gMTRRjkOCXr6njyulZw7yvVtFFB6FYpiRUfNRwI96ANTVyqB09Z86IiIHF9LVSLtAfkFM/sr7Q=="
       },
       "Microsoft.Build.Tasks.Git": {
         "type": "Transitive",

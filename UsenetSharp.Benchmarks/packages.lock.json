@@ -135,6 +135,11 @@
         "resolved": "6.0.0",
         "contentHash": "9+PnzmQFfEFNR9J2aDTfJGGupShHjOuGw4VUv+JB044biSHrnmCIMD+mJHmb2H7YryrfBEXDurxQ47gJZdCKNQ=="
       },
+      "NzbDav.RapidYencSharp": {
+        "type": "Transitive",
+        "resolved": "2.0.2",
+        "contentHash": "NKPpFwFfKbm0gMTRRjkOCXr6njyulZw7yvVtFFB6FYpiRUfNRwI96ANTVyqB09Z86IiIHF9LVSLtAfkFM/sr7Q=="
+      },
       "Perfolizer": {
         "type": "Transitive",
         "resolved": "0.6.1",
@@ -147,11 +152,6 @@
         "type": "Transitive",
         "resolved": "3.2.4",
         "contentHash": "I5qFifWw/gaTQT52MhzjZpkm/JPlfjSeO/DTZJjO7+hTKI+0aGRgOgZ3NN6D96dDuuqbIAZSeA5RimtHjqrA2A=="
-      },
-      "RapidYencSharp": {
-        "type": "Transitive",
-        "resolved": "2.0.0",
-        "contentHash": "OghjahsZCiGpbQOWlhpjwSG5AvDErGXlv6xPtLgnaosb8Bj9YPZP1nmhAC6YUYv0xCwTW1QDXkXbuOWNCq/+cQ=="
       },
       "System.CodeDom": {
         "type": "Transitive",
@@ -174,7 +174,7 @@
       "NzbDav.UsenetSharp": {
         "type": "Project",
         "dependencies": {
-          "RapidYencSharp": "[2.0.0, )"
+          "NzbDav.RapidYencSharp": "[2.0.2, )"
         }
       }
     }

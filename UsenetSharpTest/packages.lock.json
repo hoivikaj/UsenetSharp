@@ -144,15 +144,15 @@
         "resolved": "13.0.3",
         "contentHash": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ=="
       },
-      "RapidYencSharp": {
+      "NzbDav.RapidYencSharp": {
         "type": "Transitive",
-        "resolved": "2.0.0",
-        "contentHash": "OghjahsZCiGpbQOWlhpjwSG5AvDErGXlv6xPtLgnaosb8Bj9YPZP1nmhAC6YUYv0xCwTW1QDXkXbuOWNCq/+cQ=="
+        "resolved": "2.0.2",
+        "contentHash": "NKPpFwFfKbm0gMTRRjkOCXr6njyulZw7yvVtFFB6FYpiRUfNRwI96ANTVyqB09Z86IiIHF9LVSLtAfkFM/sr7Q=="
       },
       "NzbDav.UsenetSharp": {
         "type": "Project",
         "dependencies": {
-          "RapidYencSharp": "[2.0.0, )"
+          "NzbDav.RapidYencSharp": "[2.0.2, )"
         }
       }
     }
