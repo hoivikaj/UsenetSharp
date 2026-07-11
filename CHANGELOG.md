@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.4](https://github.com/nzbdav/UsenetSharp/compare/v1.2.3...v1.2.4) (2026-07-11)
+
+
+### Bug Fixes
+
+* **client:** prevent stale cancellation propagation ([ad63088](https://github.com/nzbdav/UsenetSharp/commit/ad630880d7c1a380094de049d3ddb0fd09737f6d))
+
 ## [1.2.3](https://github.com/nzbdav/UsenetSharp/compare/v1.2.2...v1.2.3) (2026-07-10)
 
 
