@@ -20,7 +20,7 @@ public partial class UsenetClient
     )
     {
         ThrowIfDisposed();
-        var validatedSegmentId = ValidateSegmentId(segmentId);
+        ValidateSegmentId(segmentId);
         try
         {
             await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -42,7 +42,8 @@ public partial class UsenetClient
             operationCts = CreateOperationTokenSource(cancellationToken);
 
             // Send ARTICLE command with message-id
-            await WriteLineAsync($"ARTICLE <{validatedSegmentId}>".AsMemory(), operationCts.Token).ConfigureAwait(false);
+            await WriteMessageIdCommandAsync("ARTICLE", segmentId, operationCts.Token)
+                .ConfigureAwait(false);
             var response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);
 

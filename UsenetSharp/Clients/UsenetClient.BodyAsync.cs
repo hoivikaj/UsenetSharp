@@ -27,7 +27,7 @@ public partial class UsenetClient
     )
     {
         ThrowIfDisposed();
-        var validatedSegmentId = ValidateSegmentId(segmentId);
+        ValidateSegmentId(segmentId);
         try
         {
             await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -49,7 +49,8 @@ public partial class UsenetClient
             operationCts = CreateOperationTokenSource(cancellationToken);
 
             // Send BODY command with message-id
-            await WriteLineAsync($"BODY <{validatedSegmentId}>".AsMemory(), operationCts.Token).ConfigureAwait(false);
+            await WriteMessageIdCommandAsync("BODY", segmentId, operationCts.Token)
+                .ConfigureAwait(false);
             var response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);
 
@@ -111,7 +112,7 @@ public partial class UsenetClient
     )
     {
         ThrowIfDisposed();
-        var validatedSegmentId = ValidateSegmentId(segmentId);
+        ValidateSegmentId(segmentId);
         try
         {
             await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -132,7 +133,7 @@ public partial class UsenetClient
             ThrowIfNotConnected();
             operationCts = CreateOperationTokenSource(cancellationToken);
 
-            await WriteLineAsync($"BODY <{validatedSegmentId}>".AsMemory(), operationCts.Token)
+            await WriteMessageIdCommandAsync("BODY", segmentId, operationCts.Token)
                 .ConfigureAwait(false);
             var response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);
@@ -195,6 +196,7 @@ public partial class UsenetClient
         Exception? failure = null;
         var connectionReusable = true;
         byte[]? encodedBuffer = null;
+        byte[]? ybeginBuffer = null;
         try
         {
             if (_reader == null)
@@ -208,9 +210,9 @@ public partial class UsenetClient
             var shouldWrite = true;
             var dataEnded = false;
             var headersRead = false;
+            var isMultipart = false;
             long drainedBytes = 0;
-            string? ybeginLine = null;
-            string? ypartLine = null;
+            var ybeginLength = 0;
             RapidYencDecoderState? decoderState = RapidYencDecoderState.RYDEC_STATE_CRLF;
             uint decodedCrc32 = 0;
             var cancellationToken = operationCts.Token;
@@ -242,14 +244,14 @@ public partial class UsenetClient
                 {
                     if (!headersRead)
                     {
-                        if (ybeginLine == null)
+                        if (ybeginBuffer == null)
                         {
                             throw new InvalidDataException(
                                 "Reached end of NNTP body without finding =ybegin header.");
                         }
 
                         headersCompletion.TrySetResult(
-                            YencStream.ParseYencHeaders(ybeginLine, ypartLine));
+                            YencStream.ParseYencHeaders(ybeginBuffer.AsSpan(0, ybeginLength)));
                     }
 
                     if (shouldWrite && encodedLength > 0)
@@ -293,11 +295,13 @@ public partial class UsenetClient
 
                 if (!headersRead)
                 {
-                    if (ybeginLine == null)
+                    if (ybeginBuffer == null)
                     {
                         if (YencStream.StartsWithYBegin(lineBytes.Span))
                         {
-                            ybeginLine = Encoding.Latin1.GetString(lineBytes.Span);
+                            ybeginBuffer = ArrayPool<byte>.Shared.Rent(lineBytes.Length);
+                            lineBytes.Span.CopyTo(ybeginBuffer);
+                            ybeginLength = lineBytes.Length;
                         }
 
                         continue;
@@ -305,16 +309,17 @@ public partial class UsenetClient
 
                     if (YencStream.StartsWithYPart(lineBytes.Span))
                     {
-                        ypartLine = Encoding.Latin1.GetString(lineBytes.Span);
                         headersRead = true;
+                        isMultipart = true;
                         headersCompletion.TrySetResult(
-                            YencStream.ParseYencHeaders(ybeginLine, ypartLine));
+                            YencStream.ParseYencHeaders(
+                                ybeginBuffer.AsSpan(0, ybeginLength), lineBytes.Span));
                         continue;
                     }
 
                     headersRead = true;
                     headersCompletion.TrySetResult(
-                        YencStream.ParseYencHeaders(ybeginLine, ypartLine));
+                        YencStream.ParseYencHeaders(ybeginBuffer.AsSpan(0, ybeginLength)));
                 }
 
                 if (YencStream.StartsWithYEnd(lineBytes.Span))
@@ -338,7 +343,7 @@ public partial class UsenetClient
                     if (_options.ValidateDecodedBodyCrc32 && shouldWrite)
                     {
                         ValidateDecodedBodyCrc32(
-                            lineBytes.Span, ypartLine != null, decodedCrc32);
+                            lineBytes.Span, isMultipart, decodedCrc32);
                     }
 
                     continue;
@@ -413,6 +418,11 @@ public partial class UsenetClient
             if (encodedBuffer != null)
             {
                 ArrayPool<byte>.Shared.Return(encodedBuffer);
+            }
+
+            if (ybeginBuffer != null)
+            {
+                ArrayPool<byte>.Shared.Return(ybeginBuffer);
             }
 
             if (failure != null)
@@ -638,7 +648,7 @@ public partial class UsenetClient
                 destination[line.Length + 1] = (byte)'\n';
                 writer.Advance(line.Length + 2);
 
-                // Flush periodically to make data available for reading
+                // Each line must become visible promptly so incremental readers can make progress.
                 var result = await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
                 if (result.IsCompleted || result.IsCanceled)
                 {

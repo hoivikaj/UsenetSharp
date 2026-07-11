@@ -1,7 +1,7 @@
 # UsenetSharp Agent Guide
 
 ## Purpose and stack
-- UsenetSharp is a .NET 9 library for asynchronous, read-only NNTP access and streaming yEnc decoding.
+- UsenetSharp is a .NET 10 library for asynchronous, read-only NNTP access and streaming yEnc decoding.
 - The solution contains `UsenetSharp/` (the package) and `UsenetSharpTest/` (NUnit tests).
 - `RapidYencSharp` provides yEnc decoding. Release Please versions the package; GitHub Actions builds and publishes releases.
 
@@ -28,6 +28,7 @@ dotnet restore --locked-mode
 dotnet build --configuration Release --no-restore
 dotnet test --configuration Release --no-build --filter "TestCategory!=Integration"
 dotnet pack UsenetSharp/UsenetSharp.csproj --configuration Release --no-build
+dotnet run --configuration Release --project UsenetSharp.Benchmarks
 ```
 - Deterministic tests must use the local scripted NNTP server and require no network or credentials.
 - Live-server tests are category `Integration` and read credentials from environment variables; never commit credentials.

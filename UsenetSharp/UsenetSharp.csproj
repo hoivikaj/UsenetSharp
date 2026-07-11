@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
+        <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
 
@@ -10,7 +10,7 @@
         <Version>1.2.4</Version>
         <Authors>UsenetSharp Contributors</Authors>
         <Title>UsenetSharp</Title>
-        <Description>Asynchronous, read-only NNTP access and streaming yEnc decoding for .NET.</Description>
+        <Description>Asynchronous, read-only NNTP access and streaming yEnc decoding for .NET 10.</Description>
         <PackageTags>usenet;nntp;yenc;networking</PackageTags>
         <PackageProjectUrl>https://github.com/nzbdav/UsenetSharp</PackageProjectUrl>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -45,6 +45,7 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="UsenetSharpTest"/>
+        <InternalsVisibleTo Include="UsenetSharp.Benchmarks"/>
     </ItemGroup>
 
 </Project>

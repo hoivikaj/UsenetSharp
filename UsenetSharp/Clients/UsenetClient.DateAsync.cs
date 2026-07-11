@@ -15,7 +15,7 @@ public partial class UsenetClient
             ThrowIfNotConnected();
             using var operationCts = CreateOperationTokenSource(cancellationToken);
 
-            await WriteLineAsync("DATE".AsMemory(), operationCts.Token).ConfigureAwait(false);
+            await WriteCommandAsync(DateCommand, operationCts.Token).ConfigureAwait(false);
             var response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);
 

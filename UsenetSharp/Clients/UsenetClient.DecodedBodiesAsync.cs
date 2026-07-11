@@ -43,11 +43,10 @@ public partial class UsenetClient
         }
 
         var segments = new SegmentId[segmentIds.Count];
-        var validatedSegmentIds = new string[segmentIds.Count];
         for (var index = 0; index < segmentIds.Count; index++)
         {
             segments[index] = segmentIds[index];
-            validatedSegmentIds[index] = ValidateSegmentId(segmentIds[index]);
+            ValidateSegmentId(segmentIds[index]);
         }
 
         try
@@ -70,9 +69,9 @@ public partial class UsenetClient
 
             using (var operationCts = CreateOperationTokenSource(cancellationToken))
             {
-                foreach (var segmentId in validatedSegmentIds)
+                foreach (var segmentId in segments)
                 {
-                    await WriteLineAsync($"BODY <{segmentId}>".AsMemory(), operationCts.Token)
+                    await WriteMessageIdCommandAsync("BODY", segmentId, operationCts.Token)
                         .ConfigureAwait(false);
                     commandsWritten++;
                 }

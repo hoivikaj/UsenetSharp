@@ -105,6 +105,43 @@ public class YencStreamTests
     }
 
     [Test]
+    public void ParseYencHeaders_MultipartBytes_ParsesAllFields()
+    {
+        var headers = YencStream.ParseYencHeaders(
+            "=ybegin part=2 total=4 line=128 size=1000 name=test.bin"u8,
+            "=ypart begin=251 end=500"u8);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(headers.FileName, Is.EqualTo("test.bin"));
+            Assert.That(headers.FileSize, Is.EqualTo(1000));
+            Assert.That(headers.LineLength, Is.EqualTo(128));
+            Assert.That(headers.PartNumber, Is.EqualTo(2));
+            Assert.That(headers.TotalParts, Is.EqualTo(4));
+            Assert.That(headers.PartOffset, Is.EqualTo(250));
+            Assert.That(headers.PartSize, Is.EqualTo(250));
+        });
+    }
+
+    [Test]
+    public void ParseYencHeaders_MissingAndMalformedValues_UsesExistingDefaults()
+    {
+        var headers = YencStream.ParseYencHeaders(
+            "=ybegin line=invalid name=test.bin"u8);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(headers.FileName, Is.EqualTo("test.bin"));
+            Assert.That(headers.FileSize, Is.Zero);
+            Assert.That(headers.LineLength, Is.Zero);
+            Assert.That(headers.PartNumber, Is.Zero);
+            Assert.That(headers.TotalParts, Is.Zero);
+            Assert.That(headers.PartOffset, Is.Zero);
+            Assert.That(headers.PartSize, Is.Zero);
+        });
+    }
+
+    [Test]
     public async Task YencStream_ReadInChunks_DecodesCorrectly()
     {
         // Arrange

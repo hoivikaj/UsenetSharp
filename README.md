@@ -1,6 +1,6 @@
 # UsenetSharp
 
-UsenetSharp is a .NET 9 library for asynchronous, read-only NNTP access and
+UsenetSharp is a .NET 10 library for asynchronous, read-only NNTP access and
 streaming yEnc decoding.
 
 ## Features
@@ -183,8 +183,8 @@ after all active response streams have finished.
 
 ## Requirements
 
-- .NET 9 SDK to build the repository
-- .NET 9 runtime to consume the current package
+- .NET 10 SDK to build the repository
+- .NET 10 runtime to consume the current package
 - RapidYencSharp includes native binaries for Windows x64, Linux x64, and Linux
   ARM64. Other platforms, including macOS, must build `rapidyenc` and place its
   native library beside the application before using `YencStream`.
@@ -199,6 +199,8 @@ dotnet restore --locked-mode
 dotnet build --configuration Release --no-restore
 dotnet test --configuration Release --no-build --filter "TestCategory!=Integration"
 dotnet pack UsenetSharp/UsenetSharp.csproj --configuration Release --no-build
+# Local performance benchmarks:
+dotnet run --configuration Release --project UsenetSharp.Benchmarks
 ```
 
 Live-server tests are marked `Integration` and are excluded from CI. Set

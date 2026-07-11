@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Buffers.Text;
 using System.Text;
 using RapidYencSharp;
 using UsenetSharp.Models;
@@ -288,54 +289,69 @@ public class YencStream : FastReadOnlyNonSeekableStream
 
     private async Task ParseHeadersAsync(CancellationToken cancellationToken)
     {
-        string? ybeginLine = null;
-        string? ypartLine = null;
-
-        // Read lines until we find =ybegin (skip empty lines that may appear before it)
-        while (true)
+        byte[]? ybeginBuffer = null;
+        var ybeginLength = 0;
+        try
         {
-            var lineMemory = await ReadNextLineAsync(cancellationToken);
-
-            if (!lineMemory.HasValue)
+            // Read lines until we find =ybegin (skip empty lines that may appear before it)
+            while (true)
             {
-                throw new InvalidDataException("Reached end of stream without finding =ybegin header");
+                var lineMemory = await ReadNextLineAsync(cancellationToken);
+
+                if (!lineMemory.HasValue)
+                {
+                    throw new InvalidDataException("Reached end of stream without finding =ybegin header");
+                }
+
+                if (lineMemory.Value.IsEmpty)
+                {
+                    continue;
+                }
+
+                var lineSpan = lineMemory.Value.Span;
+                if (StartsWithYBegin(lineSpan))
+                {
+                    ybeginBuffer = ArrayPool<byte>.Shared.Rent(lineSpan.Length);
+                    lineSpan.CopyTo(ybeginBuffer);
+                    ybeginLength = lineSpan.Length;
+                    break;
+                }
             }
 
-            if (lineMemory.Value.IsEmpty)
+            // Check if next line is =ypart or encoded data
+            var nextLineMemory = await ReadNextLineAsync(cancellationToken);
+            var nextLineSpan = nextLineMemory.HasValue
+                ? nextLineMemory.Value.Span
+                : ReadOnlySpan<byte>.Empty;
+            ReadOnlySpan<byte> ypartLine = default;
+            if (!nextLineSpan.IsEmpty)
             {
-                continue;
+                if (StartsWithYPart(nextLineSpan))
+                {
+                    ypartLine = nextLineSpan;
+                    // Next line will be encoded data, ReadAsync will handle it
+                }
+                else if (!StartsWithYEnd(nextLineSpan))
+                {
+                    // This is the first encoded data line - decode it now
+                    EnsureDecodeCapacity(nextLineSpan.Length);
+                    int decodedLength = YencDecoder.DecodeEx(
+                        nextLineSpan, _decodeBuffer!, ref _decoderState, isRaw: false);
+                    _decodeBufferPosition = 0;
+                    _decodeBufferLength = decodedLength;
+                }
             }
 
-            var lineSpan = lineMemory.Value.Span;
-            if (StartsWithYBegin(lineSpan))
+            _yencHeaders = ParseYencHeaders(
+                ybeginBuffer.AsSpan(0, ybeginLength), ypartLine);
+        }
+        finally
+        {
+            if (ybeginBuffer != null)
             {
-                ybeginLine = Encoding.Latin1.GetString(lineSpan);
-                break;
+                ArrayPool<byte>.Shared.Return(ybeginBuffer);
             }
         }
-
-        // Check if next line is =ypart or encoded data
-        var nextLineMemory = await ReadNextLineAsync(cancellationToken);
-        if (nextLineMemory.HasValue && !nextLineMemory.Value.IsEmpty)
-        {
-            var nextLineSpan = nextLineMemory.Value.Span;
-
-            if (StartsWithYPart(nextLineSpan))
-            {
-                ypartLine = Encoding.Latin1.GetString(nextLineSpan);
-                // Next line will be encoded data, ReadAsync will handle it
-            }
-            else if (!StartsWithYEnd(nextLineSpan))
-            {
-                // This is the first encoded data line - decode it now
-                EnsureDecodeCapacity(nextLineSpan.Length);
-                int decodedLength = YencDecoder.DecodeEx(nextLineSpan, _decodeBuffer!, ref _decoderState, isRaw: false);
-                _decodeBufferPosition = 0;
-                _decodeBufferLength = decodedLength;
-            }
-        }
-
-        _yencHeaders = ParseYencHeaders(ybeginLine, ypartLine);
     }
 
     internal static bool StartsWithYBegin(ReadOnlySpan<byte> line) =>
@@ -347,45 +363,28 @@ public class YencStream : FastReadOnlyNonSeekableStream
     internal static bool StartsWithYEnd(ReadOnlySpan<byte> line) =>
         line.Length >= 5 && line.Slice(0, 5).SequenceEqual("=yend"u8);
 
-    internal static UsenetYencHeader ParseYencHeaders(string ybeginLine, string? ypartLine)
+    internal static UsenetYencHeader ParseYencHeaders(
+        ReadOnlySpan<byte> ybeginLine,
+        ReadOnlySpan<byte> ypartLine = default)
     {
         // Parse =ybegin line
         // Format: =ybegin part=123 total=123 line=123 size=123 name=filename.bin
-        var ybeginParts = ybeginLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
         int lineLength = 128; // default
         long fileSize = 0;
         string fileName = string.Empty;
         int partNumber = 0;
         int totalParts = 0;
 
-        foreach (var part in ybeginParts.Skip(1)) // Skip "=ybegin"
+        var ybeginFields = ybeginLine[7..];
+        foreach (var tokenRange in ybeginFields.Split((byte)' '))
         {
-            var keyValue = part.Split('=', 2);
-            if (keyValue.Length == 2)
-            {
-                var key = keyValue[0];
-                var value = keyValue[1];
-
-                switch (key)
-                {
-                    case "line":
-                        int.TryParse(value, out lineLength);
-                        break;
-                    case "size":
-                        long.TryParse(value, out fileSize);
-                        break;
-                    case "name":
-                        fileName = value;
-                        break;
-                    case "part":
-                        int.TryParse(value, out partNumber);
-                        break;
-                    case "total":
-                        int.TryParse(value, out totalParts);
-                        break;
-                }
-            }
+            ParseYbeginToken(
+                ybeginFields[tokenRange],
+                ref lineLength,
+                ref fileSize,
+                ref fileName,
+                ref partNumber,
+                ref totalParts);
         }
 
         // Parse =ypart line if present
@@ -393,30 +392,15 @@ public class YencStream : FastReadOnlyNonSeekableStream
         long partSize = fileSize;
         long partOffset = 0;
 
-        if (ypartLine != null)
+        if (!ypartLine.IsEmpty)
         {
-            var ypartParts = ypartLine.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             long partBegin = 0;
             long partEnd = 0;
 
-            foreach (var part in ypartParts.Skip(1)) // Skip "=ypart"
+            var ypartFields = ypartLine[6..];
+            foreach (var tokenRange in ypartFields.Split((byte)' '))
             {
-                var keyValue = part.Split('=', 2);
-                if (keyValue.Length == 2)
-                {
-                    var key = keyValue[0];
-                    var value = keyValue[1];
-
-                    switch (key)
-                    {
-                        case "begin":
-                            long.TryParse(value, out partBegin);
-                            break;
-                        case "end":
-                            long.TryParse(value, out partEnd);
-                            break;
-                    }
-                }
+                ParseYpartToken(ypartFields[tokenRange], ref partBegin, ref partEnd);
             }
 
             partOffset = partBegin - 1; // yEnc uses 1-based indexing
@@ -433,6 +417,83 @@ public class YencStream : FastReadOnlyNonSeekableStream
             PartSize = partSize,
             PartOffset = partOffset
         };
+    }
+
+    private static void ParseYbeginToken(
+        ReadOnlySpan<byte> token,
+        ref int lineLength,
+        ref long fileSize,
+        ref string fileName,
+        ref int partNumber,
+        ref int totalParts)
+    {
+        var separator = token.IndexOf((byte)'=');
+        if (separator <= 0)
+        {
+            return;
+        }
+
+        var key = token[..separator];
+        var value = token[(separator + 1)..];
+        if (key.SequenceEqual("line"u8))
+        {
+            lineLength = ParseInt32(value);
+        }
+        else if (key.SequenceEqual("size"u8))
+        {
+            fileSize = ParseInt64(value);
+        }
+        else if (key.SequenceEqual("name"u8))
+        {
+            fileName = Encoding.Latin1.GetString(value);
+        }
+        else if (key.SequenceEqual("part"u8))
+        {
+            partNumber = ParseInt32(value);
+        }
+        else if (key.SequenceEqual("total"u8))
+        {
+            totalParts = ParseInt32(value);
+        }
+    }
+
+    private static void ParseYpartToken(
+        ReadOnlySpan<byte> token,
+        ref long partBegin,
+        ref long partEnd)
+    {
+        var separator = token.IndexOf((byte)'=');
+        if (separator <= 0)
+        {
+            return;
+        }
+
+        var key = token[..separator];
+        var value = token[(separator + 1)..];
+        if (key.SequenceEqual("begin"u8))
+        {
+            partBegin = ParseInt64(value);
+        }
+        else if (key.SequenceEqual("end"u8))
+        {
+            partEnd = ParseInt64(value);
+        }
+    }
+
+    private static int ParseInt32(ReadOnlySpan<byte> value)
+    {
+        return Utf8Parser.TryParse(value, out int parsed, out var consumed) &&
+               consumed == value.Length
+            ? parsed
+            : 0;
+    }
+
+    private static long ParseInt64(ReadOnlySpan<byte> value)
+    {
+        return Utf8Parser.TryParse(value, out long parsed, out var consumed) &&
+               consumed == value.Length
+            ? parsed
+            : 0;
     }
 
     protected override void Dispose(bool disposing)

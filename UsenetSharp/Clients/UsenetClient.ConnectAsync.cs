@@ -47,7 +47,11 @@ public partial class UsenetClient
 
             // Use Latin1 encoding to preserve exact byte values 0-255 for yEnc-encoded content
             _reader = new NntpLineReader(_stream);
-            _writer = new StreamWriter(_stream, Encoding.Latin1) { AutoFlush = true };
+            _writer = new StreamWriter(_stream, Encoding.Latin1)
+            {
+                AutoFlush = true,
+                NewLine = "\r\n"
+            };
 
             // Read the server response
             var response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);

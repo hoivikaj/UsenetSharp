@@ -5,6 +5,7 @@
         <TreatWarningsAsErrors Condition="'$(CI)' == 'true' and '$(MSBuildProjectName)' == 'UsenetSharp'">true</TreatWarningsAsErrors>
         <EnableNETAnalyzers>true</EnableNETAnalyzers>
         <AnalysisLevel>latest</AnalysisLevel>
+        <LangVersion>14</LangVersion>
 
         <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
         <RestoreLockedMode Condition="'$(CI)' == 'true'">true</RestoreLockedMode>

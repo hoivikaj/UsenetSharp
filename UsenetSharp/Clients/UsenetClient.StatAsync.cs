@@ -7,7 +7,7 @@ public partial class UsenetClient
     public async Task<UsenetStatResponse> StatAsync(SegmentId segmentId, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
-        var validatedSegmentId = ValidateSegmentId(segmentId);
+        ValidateSegmentId(segmentId);
         await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -17,7 +17,8 @@ public partial class UsenetClient
             using var operationCts = CreateOperationTokenSource(cancellationToken);
 
             // Send STAT command with message-id
-            await WriteLineAsync($"STAT <{validatedSegmentId}>".AsMemory(), operationCts.Token).ConfigureAwait(false);
+            await WriteMessageIdCommandAsync("STAT", segmentId, operationCts.Token)
+                .ConfigureAwait(false);
             var response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);
 

@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Text;
 using UsenetSharp.Exceptions;
 using UsenetSharp.Models;
 
@@ -5,6 +7,8 @@ namespace UsenetSharp.Clients;
 
 public partial class UsenetClient
 {
+    private static readonly byte[] DateCommand = "DATE\r\n"u8.ToArray();
+
     private void CleanupConnection(bool createNewLifetime = true)
     {
         Volatile.Write(ref _connectionState, 0);
@@ -118,30 +122,62 @@ public partial class UsenetClient
         }
     }
 
-    private static string ValidateSegmentId(SegmentId segmentId)
+    private static void ValidateSegmentId(SegmentId segmentId)
     {
-        var value = segmentId.ToString();
+        var value = segmentId.Value;
         ValidateCommandValue(value, nameof(segmentId), 497);
         if (value.Length < 3 || value[0] == '@' || value[^1] == '@' || !value.Contains('@') ||
-            value.Contains('<') || value.Contains('>') || value.Any(char.IsWhiteSpace))
+            value.Contains('<') || value.Contains('>') || ContainsWhitespace(value))
         {
             throw new ArgumentException("Segment ID must be a valid NNTP message-id without angle brackets.",
                 nameof(segmentId));
         }
-
-        return value;
     }
 
     private static void ValidateCommandValue(string value, string parameterName, int maximumLength)
     {
         ArgumentNullException.ThrowIfNull(value, parameterName);
+        ValidateCommandValue(value.AsSpan(), parameterName, maximumLength);
+    }
+
+    private static void ValidateCommandValue(
+        ReadOnlySpan<char> value,
+        string parameterName,
+        int maximumLength)
+    {
         if (value.Length == 0 || value.Length > maximumLength ||
-            value.Any(character => char.IsControl(character)))
+            ContainsControlCharacter(value))
         {
             throw new ArgumentException(
                 $"Value must contain 1-{maximumLength} characters and no control characters.",
                 parameterName);
         }
+    }
+
+    private static bool ContainsWhitespace(ReadOnlySpan<char> value)
+    {
+        foreach (var character in value)
+        {
+            if (char.IsWhiteSpace(character))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool ContainsControlCharacter(ReadOnlySpan<char> value)
+    {
+        foreach (var character in value)
+        {
+            if (char.IsControl(character))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private CancellationTokenSource CreateCtsWithTimeout(CancellationToken cancellationToken)
@@ -159,6 +195,74 @@ public partial class UsenetClient
             await _writer!.WriteLineAsync(line, cts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cts.Token.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            throw new TimeoutException("Timeout writing to NNTP stream.");
+        }
+    }
+
+    private ValueTask WriteMessageIdCommandAsync(
+        string command,
+        SegmentId segmentId,
+        CancellationToken cancellationToken)
+    {
+        var messageId = segmentId.Value;
+        var length = command.Length + messageId.Length + 5;
+        var buffer = ArrayPool<byte>.Shared.Rent(length);
+        try
+        {
+            var destination = buffer.AsSpan(0, length);
+            var written = Encoding.Latin1.GetBytes(command, destination);
+            destination[written++] = (byte)' ';
+            destination[written++] = (byte)'<';
+            written += Encoding.Latin1.GetBytes(messageId, destination[written..]);
+            destination[written++] = (byte)'>';
+            destination[written++] = (byte)'\r';
+            destination[written++] = (byte)'\n';
+            return WritePooledCommandAsync(buffer, written, cancellationToken);
+        }
+        catch
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+            throw;
+        }
+    }
+
+    private async ValueTask WritePooledCommandAsync(
+        byte[] buffer,
+        int length,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var cts = CreateCtsWithTimeout(cancellationToken);
+            try
+            {
+                await _stream!.WriteAsync(buffer.AsMemory(0, length), cts.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (
+                cts.Token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException("Timeout writing to NNTP stream.");
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private async ValueTask WriteCommandAsync(
+        ReadOnlyMemory<byte> command,
+        CancellationToken cancellationToken)
+    {
+        using var cts = CreateCtsWithTimeout(cancellationToken);
+        try
+        {
+            await _stream!.WriteAsync(command, cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (
+            cts.Token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
         {
             throw new TimeoutException("Timeout writing to NNTP stream.");
         }

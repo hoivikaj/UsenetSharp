@@ -108,6 +108,37 @@ public class UsenetClientDeterministicTests
     }
 
     [Test]
+    public async Task BodyAsync_LargeMultilineBodyPreservesBytes()
+    {
+        var expected = new StringBuilder();
+        var wire = new StringBuilder("222 body follows\r\n");
+        for (var index = 0; index < 1_000; index++)
+        {
+            var line = index % 10 == 0
+                ? $".dot-prefixed-{index:D4}-{new string('x', 80)}"
+                : $"line-{index:D4}-{new string('x', 90)}";
+            expected.Append(line).Append("\r\n");
+            if (line[0] == '.')
+            {
+                wire.Append('.');
+            }
+
+            wire.Append(line).Append("\r\n");
+        }
+
+        wire.Append(".\r\n");
+        await using var server = new ScriptedNntpServer(async (_, writer, _) =>
+            await writer.WriteAsync(wire.ToString()));
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var response = await client.BodyAsync("article@example.com", CancellationToken.None);
+        using var reader = new StreamReader(response.Stream!, Encoding.Latin1);
+
+        Assert.That(await reader.ReadToEndAsync(), Is.EqualTo(expected.ToString()));
+    }
+
+    [Test]
     public async Task DecodedBodyAsync_DecodesLargeBodyAndProvidesHeaders()
     {
         var expected = Enumerable.Range(0, 180_000)
