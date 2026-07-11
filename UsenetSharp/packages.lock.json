@@ -15,9 +15,9 @@
       },
       "RapidYencSharp": {
         "type": "Direct",
-        "requested": "[1.0.0, )",
-        "resolved": "1.0.0",
-        "contentHash": "A9ikoGJm9e347coGZFFlY2QK4s8klWZvP3QMMuoWFVmhrbr1QnrfmnpuJyna9hjoXAi7DJJHlR6nDpcgNSF6xg=="
+        "requested": "[2.0.0, )",
+        "resolved": "2.0.0",
+        "contentHash": "OghjahsZCiGpbQOWlhpjwSG5AvDErGXlv6xPtLgnaosb8Bj9YPZP1nmhAC6YUYv0xCwTW1QDXkXbuOWNCq/+cQ=="
       },
       "Microsoft.Build.Tasks.Git": {
         "type": "Transitive",
