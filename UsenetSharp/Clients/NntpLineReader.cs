@@ -28,9 +28,11 @@ internal sealed class NntpLineReader(Stream stream, int maximumLineLength = 64 *
         {
             if (_position >= _length)
             {
-                _position = 0;
-                _length = await stream.ReadAsync(_buffer.AsMemory(0, BufferSize), cancellationToken)
+                var bytesRead = await stream.ReadAsync(
+                        _buffer.AsMemory(0, BufferSize), cancellationToken)
                     .ConfigureAwait(false);
+                _position = 0;
+                _length = bytesRead;
                 if (_length == 0)
                 {
                     if (_lineBufferLength == 0)

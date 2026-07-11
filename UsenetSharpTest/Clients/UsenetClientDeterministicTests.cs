@@ -576,6 +576,16 @@ public class UsenetClientDeterministicTests
                 await WriteSimpleYencArticleAsync(writer, [3, 4], "size=2");
                 Assert.That(
                     await reader.ReadLineAsync(cancellationToken),
+                    Is.EqualTo("BODY <after-first@example.com>"));
+                Assert.That(
+                    await reader.ReadLineAsync(cancellationToken),
+                    Is.EqualTo("BODY <after-second@example.com>"));
+                await WriteSimpleYencArticleAsync(
+                    writer, [5, 6], "size=2", "after-first.bin");
+                await WriteSimpleYencArticleAsync(
+                    writer, [7, 8], "size=2", "after-second.bin");
+                Assert.That(
+                    await reader.ReadLineAsync(cancellationToken),
                     Is.EqualTo("DATE"));
                 await writer.WriteLineAsync("111 20260709213000");
             });
@@ -610,6 +620,25 @@ public class UsenetClientDeterministicTests
         Assert.That(await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
             Is.EqualTo(ArticleBodyResult.Cancelled));
         Assert.That(callbackCount, Is.EqualTo(1));
+
+        var nextBatch = await client.DecodedBodiesAsync(
+            new SegmentId[] { "after-first@example.com", "after-second@example.com" },
+            CancellationToken.None);
+        for (var index = 0; index < nextBatch.Responses.Count; index++)
+        {
+            var nextResponse = await nextBatch.Responses[index];
+            Assert.That(
+                nextResponse.SegmentId,
+                Is.EqualTo(index == 0
+                    ? "after-first@example.com"
+                    : "after-second@example.com"));
+            var headers = await nextResponse.Stream!.GetYencHeadersAsync();
+            Assert.That(
+                headers!.FileName,
+                Is.EqualTo(index == 0 ? "after-first.bin" : "after-second.bin"));
+            await nextResponse.Stream.CopyToAsync(Stream.Null);
+        }
+
         var date = await client.DateAsync(CancellationToken.None);
         Assert.That(date.ResponseCode, Is.EqualTo((int)UsenetResponseType.DateAndTime));
         Assert.That(client.IsHealthy, Is.True);
