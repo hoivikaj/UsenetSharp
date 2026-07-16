@@ -15,10 +15,12 @@ public partial class UsenetClient
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
             using var operationCts = CreateOperationTokenSource(cancellationToken);
+            using var ioTimeout = new CoalescedReadTimeout(
+                operationCts.Token, _options.ReadTimeout, _timeProvider);
 
             var (responseCode, response) = await ExchangeSingleLineAsync(
-                ct => WriteCommandAsync(DateCommand, ct),
-                operationCts.Token).ConfigureAwait(false);
+                ioTimeout,
+                timeout => WriteCommandAsync(DateCommand, timeout)).ConfigureAwait(false);
 
             DateTimeOffset? dateTime = null;
             if (responseCode == (int)UsenetResponseType.DateAndTime)

@@ -48,10 +48,12 @@ public partial class UsenetClient
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
             operationCts = CreateOperationTokenSource(cancellationToken);
+            using var ioTimeout = new CoalescedReadTimeout(
+                operationCts.Token, _options.ReadTimeout, _timeProvider);
 
             var (responseCode, response) = await ExchangeSingleLineAsync(
-                ct => WriteMessageIdCommandAsync("BODY", segmentId, ct),
-                operationCts.Token).ConfigureAwait(false);
+                ioTimeout,
+                timeout => WriteMessageIdCommandAsync("BODY", segmentId, timeout)).ConfigureAwait(false);
 
             // Article retrieved - body follows
             if (responseCode == (int)UsenetResponseType.ArticleRetrievedBodyFollows)
@@ -134,10 +136,12 @@ public partial class UsenetClient
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
             operationCts = CreateOperationTokenSource(cancellationToken);
+            using var ioTimeout = new CoalescedReadTimeout(
+                operationCts.Token, _options.ReadTimeout, _timeProvider);
 
             var (responseCode, response) = await ExchangeSingleLineAsync(
-                ct => WriteMessageIdCommandAsync("BODY", segmentId, ct),
-                operationCts.Token).ConfigureAwait(false);
+                ioTimeout,
+                timeout => WriteMessageIdCommandAsync("BODY", segmentId, timeout)).ConfigureAwait(false);
 
             if (responseCode == (int)UsenetResponseType.ArticleRetrievedBodyFollows)
             {
@@ -195,12 +199,14 @@ public partial class UsenetClient
         CancellationTokenSource operationCts,
         CancellationToken callerCancellationToken,
         Action<ArticleBodyResult>? onConnectionReadyAgain,
-        bool releaseCommandLock = true)
+        bool releaseCommandLock = true,
+        CoalescedReadTimeout? sharedReadTimeout = null)
     {
         Exception? failure = null;
         var connectionReusable = true;
         byte[]? encodedBuffer = null;
         byte[]? ybeginBuffer = null;
+        CoalescedReadTimeout? ownedReadTimeout = null;
         try
         {
             if (_reader == null)
@@ -221,8 +227,13 @@ public partial class UsenetClient
             RapidYencDecoderState? decoderState = RapidYencDecoderState.RYDEC_STATE_CRLF;
             uint decodedCrc32 = 0;
             var cancellationToken = operationCts.Token;
-            using var readTimeout = new CoalescedReadTimeout(
-                cancellationToken, _options.ReadTimeout, _timeProvider);
+            if (sharedReadTimeout == null)
+            {
+                ownedReadTimeout = new CoalescedReadTimeout(
+                    cancellationToken, _options.ReadTimeout, _timeProvider);
+            }
+
+            var readTimeout = sharedReadTimeout ?? ownedReadTimeout!;
 
             while (true)
             {
@@ -460,7 +471,12 @@ public partial class UsenetClient
             }
 
             await writer.CompleteAsync(failure).ConfigureAwait(false);
-            operationCts.Dispose();
+            ownedReadTimeout?.Dispose();
+            if (sharedReadTimeout == null)
+            {
+                operationCts.Dispose();
+            }
+
             if (releaseCommandLock)
             {
                 _commandLock.Release();

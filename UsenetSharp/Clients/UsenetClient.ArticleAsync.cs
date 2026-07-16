@@ -40,10 +40,12 @@ public partial class UsenetClient
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
             operationCts = CreateOperationTokenSource(cancellationToken);
+            using var ioTimeout = new CoalescedReadTimeout(
+                operationCts.Token, _options.ReadTimeout, _timeProvider);
 
             var (responseCode, response) = await ExchangeSingleLineAsync(
-                ct => WriteMessageIdCommandAsync("ARTICLE", segmentId, ct),
-                operationCts.Token).ConfigureAwait(false);
+                ioTimeout,
+                timeout => WriteMessageIdCommandAsync("ARTICLE", segmentId, timeout)).ConfigureAwait(false);
 
             // Article retrieved - head and body follow
             if (responseCode == (int)UsenetResponseType.ArticleRetrievedHeadAndBodyFollow)

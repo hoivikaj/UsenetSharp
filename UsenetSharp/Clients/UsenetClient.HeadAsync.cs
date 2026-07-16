@@ -16,10 +16,12 @@ public partial class UsenetClient
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
             using var operationCts = CreateOperationTokenSource(cancellationToken);
+            using var ioTimeout = new CoalescedReadTimeout(
+                operationCts.Token, _options.ReadTimeout, _timeProvider);
 
             var (responseCode, response) = await ExchangeSingleLineAsync(
-                ct => WriteMessageIdCommandAsync("HEAD", segmentId, ct),
-                operationCts.Token).ConfigureAwait(false);
+                ioTimeout,
+                timeout => WriteMessageIdCommandAsync("HEAD", segmentId, timeout)).ConfigureAwait(false);
 
             // Article retrieved - head follows (multi-line)
             if (responseCode == (int)UsenetResponseType.ArticleRetrievedHeadFollows)

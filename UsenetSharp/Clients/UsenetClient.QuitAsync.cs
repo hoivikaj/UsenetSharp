@@ -19,9 +19,11 @@ public partial class UsenetClient
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
             using var operationCts = CreateOperationTokenSource(cancellationToken);
+            using var ioTimeout = new CoalescedReadTimeout(
+                operationCts.Token, _options.ReadTimeout, _timeProvider);
             var (code, line) = await ExchangeSingleLineAsync(
-                ct => WriteCommandAsync(QuitCommand, ct),
-                operationCts.Token).ConfigureAwait(false);
+                ioTimeout,
+                timeout => WriteCommandAsync(QuitCommand, timeout)).ConfigureAwait(false);
             CleanupConnection();
             return new UsenetResponse { ResponseCode = code, ResponseMessage = line };
         }

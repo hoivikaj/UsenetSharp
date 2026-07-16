@@ -110,17 +110,18 @@ public partial class UsenetClient
     }
 
     /// <summary>
-    /// Writes a single-line command and reads its status line. Any failure after
-    /// command bytes may be on the wire poisons the session (RFC 3977 §3.5).
+    /// Writes a single-line command and reads its status line through one coalesced
+    /// I/O timeout shared by the write and the read. Any failure after command bytes
+    /// may be on the wire poisons the session (RFC 3977 §3.5).
     /// </summary>
     private async ValueTask<(int Code, string Line)> ExchangeSingleLineAsync(
-        Func<CancellationToken, ValueTask> writeCommand,
-        CancellationToken token)
+        CoalescedReadTimeout ioTimeout,
+        Func<CoalescedReadTimeout, ValueTask> writeCommand)
     {
         try
         {
-            await writeCommand(token).ConfigureAwait(false);
-            var line = await ReadLineAsync(token).ConfigureAwait(false)
+            await writeCommand(ioTimeout).ConfigureAwait(false);
+            var line = await ReadLineAsync(ioTimeout).ConfigureAwait(false)
                 ?? throw new UsenetProtocolException(
                     "The NNTP connection closed before a response was received.");
             return (ParseResponseCode(line), line);
@@ -265,10 +266,27 @@ public partial class UsenetClient
         }
     }
 
+    private async ValueTask WriteLineAsync(ReadOnlyMemory<char> line, CoalescedReadTimeout ioTimeout)
+    {
+        ioTimeout.BeginIo();
+        try
+        {
+            await _writer!.WriteLineAsync(line, ioTimeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ioTimeout.IsTimeoutCancellation)
+        {
+            throw new TimeoutException("Timeout writing to NNTP stream.");
+        }
+        finally
+        {
+            ioTimeout.EndIo();
+        }
+    }
+
     private ValueTask WriteMessageIdCommandAsync(
         string command,
         SegmentId segmentId,
-        CancellationToken cancellationToken)
+        CoalescedReadTimeout ioTimeout)
     {
         var messageId = segmentId.Value;
         var length = command.Length + messageId.Length + 5;
@@ -283,7 +301,7 @@ public partial class UsenetClient
             destination[written++] = (byte)'>';
             destination[written++] = (byte)'\r';
             destination[written++] = (byte)'\n';
-            return WritePooledCommandAsync(buffer, written, cancellationToken);
+            return WritePooledCommandAsync(buffer, written, ioTimeout);
         }
         catch
         {
@@ -295,20 +313,23 @@ public partial class UsenetClient
     private async ValueTask WritePooledCommandAsync(
         byte[] buffer,
         int length,
-        CancellationToken cancellationToken)
+        CoalescedReadTimeout ioTimeout)
     {
         try
         {
-            using var cts = CreateCtsWithTimeout(cancellationToken);
+            ioTimeout.BeginIo();
             try
             {
-                await _stream!.WriteAsync(buffer.AsMemory(0, length), cts.Token)
+                await _stream!.WriteAsync(buffer.AsMemory(0, length), ioTimeout.Token)
                     .ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (
-                cts.Token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (ioTimeout.IsTimeoutCancellation)
             {
                 throw new TimeoutException("Timeout writing to NNTP stream.");
+            }
+            finally
+            {
+                ioTimeout.EndIo();
             }
         }
         finally
@@ -333,6 +354,25 @@ public partial class UsenetClient
         }
     }
 
+    private async ValueTask WriteCommandAsync(
+        ReadOnlyMemory<byte> command,
+        CoalescedReadTimeout ioTimeout)
+    {
+        ioTimeout.BeginIo();
+        try
+        {
+            await _stream!.WriteAsync(command, ioTimeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ioTimeout.IsTimeoutCancellation)
+        {
+            throw new TimeoutException("Timeout writing to NNTP stream.");
+        }
+        finally
+        {
+            ioTimeout.EndIo();
+        }
+    }
+
     private async ValueTask<string?> ReadLineAsync(CancellationToken ct)
     {
         using var cts = CreateCtsWithTimeout(ct);
@@ -346,10 +386,27 @@ public partial class UsenetClient
         }
     }
 
+    private async ValueTask<string?> ReadLineAsync(CoalescedReadTimeout ioTimeout)
+    {
+        ioTimeout.BeginIo();
+        try
+        {
+            return await _reader!.ReadLineAsync(ioTimeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ioTimeout.IsTimeoutCancellation)
+        {
+            throw new TimeoutException("Timeout reading from NNTP stream.");
+        }
+        finally
+        {
+            ioTimeout.EndIo();
+        }
+    }
+
     private async ValueTask<ReadOnlyMemory<byte>?> ReadLineBytesAsync(
         CoalescedReadTimeout readTimeout)
     {
-        readTimeout.BeginRead();
+        readTimeout.BeginIo();
         try
         {
             return await _reader!.ReadLineBytesAsync(readTimeout.Token).ConfigureAwait(false);
@@ -360,7 +417,7 @@ public partial class UsenetClient
         }
         finally
         {
-            readTimeout.EndRead();
+            readTimeout.EndIo();
         }
     }
 

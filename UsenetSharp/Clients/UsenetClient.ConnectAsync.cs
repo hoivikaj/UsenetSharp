@@ -66,7 +66,9 @@ public partial class UsenetClient
             };
 
             // Read the server response
-            var response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);
+            using var greetingTimeout = new CoalescedReadTimeout(
+                operationCts.Token, _options.ReadTimeout, _timeProvider);
+            var response = await ReadLineAsync(greetingTimeout).ConfigureAwait(false);
             var responseCode = ParseResponseCode(response);
 
             // NNTP servers typically respond with "200" or "201" for successful connection

@@ -1319,6 +1319,25 @@ public class UsenetClientDeterministicTests
     }
 
     [Test]
+    public async Task StatAsync_WriteTimeout_PoisonsConnection()
+    {
+        await using var server = new ScriptedNntpServer((_, _, _) => Task.CompletedTask);
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            ReadTimeout = TimeSpan.FromMilliseconds(200)
+        });
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var writeStream = new ControllableWriteStream();
+        writeStream.SetMode(ControllableWriteStream.WriteMode.BlockUntilCancelled);
+        client.ReplaceConnectionStreamForTests(writeStream);
+
+        Assert.ThrowsAsync<TimeoutException>(() =>
+            client.StatAsync("article@example.com", CancellationToken.None));
+        Assert.That(client.IsHealthy, Is.False);
+    }
+
+    [Test]
     public async Task DecodedBodiesAsync_WriteCancelled_PoisonsConnection()
     {
         await using var server = new ScriptedNntpServer((_, _, _) => Task.CompletedTask);

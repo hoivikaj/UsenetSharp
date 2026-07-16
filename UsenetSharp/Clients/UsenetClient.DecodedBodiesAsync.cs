@@ -78,10 +78,12 @@ public partial class UsenetClient
             ThrowIfNotConnected();
 
             using (var operationCts = CreateOperationTokenSource(cancellationToken))
+            using (var writeTimeout = new CoalescedReadTimeout(
+                       operationCts.Token, _options.ReadTimeout, _timeProvider))
             {
                 // Bytes may reach the wire from here on (RFC 3977 §3.5).
                 writeStarted = true;
-                await WritePipelinedBodyCommandsAsync(segments, operationCts.Token)
+                await WritePipelinedBodyCommandsAsync(segments, writeTimeout)
                     .ConfigureAwait(false);
             }
 
@@ -121,7 +123,7 @@ public partial class UsenetClient
 
     private async ValueTask WritePipelinedBodyCommandsAsync(
         IReadOnlyList<SegmentId> segments,
-        CancellationToken cancellationToken)
+        CoalescedReadTimeout ioTimeout)
     {
         var totalLength = 0;
         for (var index = 0; index < segments.Count; index++)
@@ -139,7 +141,7 @@ public partial class UsenetClient
                 written += FormatBodyCommand(buffer.AsSpan(written), segments[index]);
             }
 
-            await WriteCommandAsync(buffer.AsMemory(0, written), cancellationToken)
+            await WriteCommandAsync(buffer.AsMemory(0, written), ioTimeout)
                 .ConfigureAwait(false);
         }
         finally
@@ -167,25 +169,17 @@ public partial class UsenetClient
         Exception? failure = null;
         var completionResult = ArticleBodyResult.Retrieved;
         var nextResponseIndex = 0;
+        using var operationCts = CreateOperationTokenSource(callerCancellationToken);
+        using var sharedReadTimeout = new CoalescedReadTimeout(
+            operationCts.Token, _options.ReadTimeout, _timeProvider);
 
         try
         {
             for (; nextResponseIndex < segmentIds.Count; nextResponseIndex++)
             {
                 var segmentId = segmentIds[nextResponseIndex];
-                var operationCts = CreateOperationTokenSource(callerCancellationToken);
-                string? response;
-                int responseCode;
-                try
-                {
-                    response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);
-                    responseCode = ParseResponseCode(response);
-                }
-                catch
-                {
-                    operationCts.Dispose();
-                    throw;
-                }
+                var response = await ReadLineAsync(sharedReadTimeout).ConfigureAwait(false);
+                var responseCode = ParseResponseCode(response);
 
                 if (responseCode != (int)UsenetResponseType.ArticleRetrievedBodyFollows)
                 {
@@ -203,7 +197,6 @@ public partial class UsenetClient
                         ResponseMessage = response!,
                         Stream = null
                     });
-                    operationCts.Dispose();
                     continue;
                 }
 
@@ -227,7 +220,8 @@ public partial class UsenetClient
                         operationCts,
                         callerCancellationToken,
                         onConnectionReadyAgain: null,
-                        releaseCommandLock: false)
+                        releaseCommandLock: false,
+                        sharedReadTimeout: sharedReadTimeout)
                     .ConfigureAwait(false);
                 if (bodyReadResult.Failure == null)
                 {

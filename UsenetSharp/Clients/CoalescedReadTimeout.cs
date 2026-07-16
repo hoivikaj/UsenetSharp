@@ -34,7 +34,7 @@ internal sealed class CoalescedReadTimeout : IDisposable
     public bool IsTimeoutCancellation =>
         _timeoutTriggered && !_operationToken.IsCancellationRequested;
 
-    public void BeginRead()
+    public void BeginIo()
     {
         lock (_gate)
         {
@@ -48,7 +48,7 @@ internal sealed class CoalescedReadTimeout : IDisposable
         }
     }
 
-    public void EndRead()
+    public void EndIo()
     {
         lock (_gate)
         {
