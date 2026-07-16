@@ -54,19 +54,73 @@ public partial class UsenetClient
         }
     }
 
-    private int ParseResponseCode(string? response)
+    private static int ParseResponseCode(string? response)
     {
-        if (string.IsNullOrEmpty(response) || response.Length < 3)
+        if (string.IsNullOrEmpty(response))
         {
-            throw new UsenetProtocolException($"Invalid NNTP Response: {response}");
+            throw new UsenetProtocolException($"Invalid NNTP response: {response}");
         }
 
-        if (int.TryParse(response.AsSpan(0, 3), out var code))
+        return ParseResponseCode(response.AsSpan());
+    }
+
+    private static int ParseResponseCode(ReadOnlySpan<char> response)
+    {
+        if (response.Length < 3 ||
+            response[0] is < '1' or > '5' ||
+            !char.IsAsciiDigit(response[1]) ||
+            !char.IsAsciiDigit(response[2]) ||
+            (response.Length > 3 && response[3] != ' '))
         {
-            return code;
+            throw new UsenetProtocolException($"Invalid NNTP response: {response}");
         }
 
-        throw new UsenetProtocolException($"Invalid NNTP Response: {response}");
+        return (response[0] - '0') * 100 + (response[1] - '0') * 10 + (response[2] - '0');
+    }
+
+    // Response codes that are always followed by a multi-line data block
+    // (RFC 3977 Appendix C; 211 is only multi-line for LISTGROUP, which this
+    // client never issues, so it is intentionally excluded).
+    private static bool IsMultiLineCode(int code) => code is
+        100 or 101 or 215 or 220 or 221 or 222 or 224 or 225 or 230 or 231;
+
+    private async ValueTask DrainUnexpectedMultiLineAsync(int code, CancellationToken _)
+    {
+        if (!IsMultiLineCode(code))
+        {
+            return;
+        }
+
+        // Bound the drain so a hostile payload cannot pin the connection.
+        var drainFailure = await TryDrainBodyAsync().ConfigureAwait(false);
+        if (drainFailure != null)
+        {
+            RecordConnectionFailure(drainFailure);
+        }
+    }
+
+    /// <summary>
+    /// Writes a single-line command and reads its status line. Any failure after
+    /// command bytes may be on the wire poisons the session (RFC 3977 §3.5).
+    /// </summary>
+    private async ValueTask<(int Code, string Line)> ExchangeSingleLineAsync(
+        Func<CancellationToken, ValueTask> writeCommand,
+        CancellationToken token)
+    {
+        try
+        {
+            await writeCommand(token).ConfigureAwait(false);
+            var line = await ReadLineAsync(token).ConfigureAwait(false)
+                ?? throw new UsenetProtocolException(
+                    "The NNTP connection closed before a response was received.");
+            return (ParseResponseCode(line), line);
+        }
+        catch (Exception e)
+        {
+            // Once bytes may be on the wire the response FIFO cannot be trusted.
+            RecordConnectionFailure(e);
+            throw;
+        }
     }
 
     private void ThrowIfNotConnected()
@@ -125,7 +179,8 @@ public partial class UsenetClient
     private static void ValidateSegmentId(SegmentId segmentId)
     {
         var value = segmentId.Value;
-        ValidateCommandValue(value, nameof(segmentId), 497);
+        // 250 octets including <> that the client adds (RFC 5536 §3.1.3).
+        ValidateCommandValue(value, nameof(segmentId), 248);
         if (value.Length < 3 || value[0] == '@' || value[^1] == '@' || !value.Contains('@') ||
             value.Contains('<') || value.Contains('>') || ContainsWhitespace(value))
         {

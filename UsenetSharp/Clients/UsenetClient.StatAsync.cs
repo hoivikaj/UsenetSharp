@@ -16,16 +16,20 @@ public partial class UsenetClient
             ThrowIfNotConnected();
             using var operationCts = CreateOperationTokenSource(cancellationToken);
 
-            // Send STAT command with message-id
-            await WriteMessageIdCommandAsync("STAT", segmentId, operationCts.Token)
-                .ConfigureAwait(false);
-            var response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);
-            var responseCode = ParseResponseCode(response);
+            var (responseCode, response) = await ExchangeSingleLineAsync(
+                ct => WriteMessageIdCommandAsync("STAT", segmentId, ct),
+                operationCts.Token).ConfigureAwait(false);
+
+            if (responseCode != (int)UsenetResponseType.ArticleExists)
+            {
+                await DrainUnexpectedMultiLineAsync(responseCode, operationCts.Token)
+                    .ConfigureAwait(false);
+            }
 
             return new UsenetStatResponse()
             {
                 ResponseCode = responseCode,
-                ResponseMessage = response!,
+                ResponseMessage = response,
                 ArticleExists = responseCode == (int)UsenetResponseType.ArticleExists,
             };
         }

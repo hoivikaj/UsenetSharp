@@ -1,3 +1,4 @@
+using UsenetSharp.Exceptions;
 using UsenetSharp.Models;
 
 namespace UsenetSharp.Clients;
@@ -15,18 +16,29 @@ public partial class UsenetClient
             ThrowIfNotConnected();
             using var operationCts = CreateOperationTokenSource(cancellationToken);
 
-            await WriteCommandAsync(DateCommand, operationCts.Token).ConfigureAwait(false);
-            var response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);
-            var responseCode = ParseResponseCode(response);
+            var (responseCode, response) = await ExchangeSingleLineAsync(
+                ct => WriteCommandAsync(DateCommand, ct),
+                operationCts.Token).ConfigureAwait(false);
 
-            // Response code 111 means success
+            DateTimeOffset? dateTime = null;
+            if (responseCode == (int)UsenetResponseType.DateAndTime)
+            {
+                try
+                {
+                    dateTime = ParseNntpDateTime(response);
+                }
+                catch (Exception e)
+                {
+                    RecordConnectionFailure(e);
+                    throw;
+                }
+            }
+
             return new UsenetDateResponse
             {
                 ResponseCode = responseCode,
-                ResponseMessage = response!,
-                DateTime = responseCode == (int)UsenetResponseType.DateAndTime
-                    ? ParseNntpDateTime(response!)
-                    : null
+                ResponseMessage = response,
+                DateTime = dateTime
             };
         }
         finally
@@ -35,46 +47,53 @@ public partial class UsenetClient
         }
     }
 
-    private DateTimeOffset? ParseNntpDateTime(string response)
+    private static DateTimeOffset ParseNntpDateTime(ReadOnlySpan<char> response)
     {
-        // DATE response format: "111 YYYYMMDDhhmmss"
-        // Example: "111 20231215143022"
-        if (string.IsNullOrEmpty(response))
+        // "111 yyyymmddhhmmss" — exactly 14 ASCII digits after the code.
+        var payload = response.Length >= 18 ? response[4..].Trim() : default;
+        if (payload.Length != 14 || !AllAsciiDigits(payload))
         {
-            return null;
-        }
-
-        var parts = response.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length < 2)
-        {
-            return null;
-        }
-
-        var dateTimeString = parts[1];
-
-        // Expected format: YYYYMMDDhhmmss (14 characters)
-        if (dateTimeString.Length != 14)
-        {
-            return null;
+            throw new UsenetProtocolException($"Malformed DATE response: {response}");
         }
 
         try
         {
-            var span = dateTimeString.AsSpan();
-            var year = int.Parse(span.Slice(0, 4));
-            var month = int.Parse(span.Slice(4, 2));
-            var day = int.Parse(span.Slice(6, 2));
-            var hour = int.Parse(span.Slice(8, 2));
-            var minute = int.Parse(span.Slice(10, 2));
-            var second = int.Parse(span.Slice(12, 2));
-
-            // NNTP DATE returns UTC time
-            var dateTime = new DateTimeOffset(year, month, day, hour, minute, second, TimeSpan.Zero);
-            return dateTime;
+            return new DateTimeOffset(
+                DigitsToInt(payload[..4]),
+                DigitsToInt(payload[4..6]),
+                DigitsToInt(payload[6..8]),
+                DigitsToInt(payload[8..10]),
+                DigitsToInt(payload[10..12]),
+                DigitsToInt(payload[12..14]),
+                TimeSpan.Zero);
         }
-        catch
+        catch (ArgumentOutOfRangeException exception)
         {
-            return null;
+            throw new UsenetProtocolException($"Malformed DATE response: {response}", exception);
         }
+    }
+
+    private static bool AllAsciiDigits(ReadOnlySpan<char> value)
+    {
+        foreach (var character in value)
+        {
+            if (!char.IsAsciiDigit(character))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static int DigitsToInt(ReadOnlySpan<char> digits)
+    {
+        var value = 0;
+        foreach (var digit in digits)
+        {
+            value = (value * 10) + (digit - '0');
+        }
+
+        return value;
     }
 }

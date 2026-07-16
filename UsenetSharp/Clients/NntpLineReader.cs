@@ -37,12 +37,12 @@ internal sealed class NntpLineReader(Stream stream, int maximumLineLength = 64 *
                 {
                     if (_lineBufferLength == 0)
                     {
-                        return null;
+                        return null; // clean EOF at a line boundary
                     }
 
-                    var partialLine = TrimCarriageReturn(_lineBuffer.AsMemory(0, _lineBufferLength));
                     _lineBufferLength = 0;
-                    return partialLine;
+                    throw new UsenetProtocolException(
+                        "The NNTP stream ended with an unterminated line.");
                 }
             }
 

@@ -1,4 +1,6 @@
+using System.Buffers;
 using System.IO.Pipelines;
+using System.Text;
 using UsenetSharp.Models;
 using UsenetSharp.Streams;
 
@@ -42,6 +44,14 @@ public partial class UsenetClient
             throw new ArgumentException("At least one segment ID is required.", nameof(segmentIds));
         }
 
+        if (segmentIds.Count > _options.MaxPipelineDepth)
+        {
+            throw new ArgumentException(
+                $"Batch exceeds MaxPipelineDepth ({_options.MaxPipelineDepth}); " +
+                "split into smaller batches to avoid TCP-window pipeline deadlock (RFC 3977 §3.5).",
+                nameof(segmentIds));
+        }
+
         var segments = new SegmentId[segmentIds.Count];
         for (var index = 0; index < segmentIds.Count; index++)
         {
@@ -60,7 +70,7 @@ public partial class UsenetClient
         }
 
         var pumpStarted = false;
-        var commandsWritten = 0;
+        var commandsWritten = false;
         try
         {
             ThrowIfDisposed();
@@ -69,12 +79,9 @@ public partial class UsenetClient
 
             using (var operationCts = CreateOperationTokenSource(cancellationToken))
             {
-                foreach (var segmentId in segments)
-                {
-                    await WriteMessageIdCommandAsync("BODY", segmentId, operationCts.Token)
-                        .ConfigureAwait(false);
-                    commandsWritten++;
-                }
+                await WritePipelinedBodyCommandsAsync(segments, operationCts.Token)
+                    .ConfigureAwait(false);
+                commandsWritten = true;
             }
 
             var completions = segments
@@ -94,9 +101,9 @@ public partial class UsenetClient
         }
         catch (Exception exception)
         {
-            if (commandsWritten > 0)
+            if (commandsWritten)
             {
-                RecordBackgroundFailure(exception);
+                RecordConnectionFailure(exception);
             }
 
             throw;
@@ -109,6 +116,45 @@ public partial class UsenetClient
                 InvokeBatchCallback(onConnectionReadyAgain, ArticleBodyResult.NotRetrieved);
             }
         }
+    }
+
+    private async ValueTask WritePipelinedBodyCommandsAsync(
+        IReadOnlyList<SegmentId> segments,
+        CancellationToken cancellationToken)
+    {
+        var totalLength = 0;
+        for (var index = 0; index < segments.Count; index++)
+        {
+            // "BODY <id>\r\n"
+            totalLength += 4 + 1 + 1 + segments[index].Value.Length + 1 + 2;
+        }
+
+        var buffer = ArrayPool<byte>.Shared.Rent(totalLength);
+        try
+        {
+            var written = 0;
+            for (var index = 0; index < segments.Count; index++)
+            {
+                written += FormatBodyCommand(buffer.AsSpan(written), segments[index]);
+            }
+
+            await WriteCommandAsync(buffer.AsMemory(0, written), cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    private static int FormatBodyCommand(Span<byte> destination, SegmentId segmentId)
+    {
+        var written = Encoding.Latin1.GetBytes("BODY <", destination);
+        written += Encoding.Latin1.GetBytes(segmentId.Value, destination[written..]);
+        destination[written++] = (byte)'>';
+        destination[written++] = (byte)'\r';
+        destination[written++] = (byte)'\n';
+        return written;
     }
 
     private async Task ProcessDecodedBodyBatchAsync(
@@ -142,6 +188,8 @@ public partial class UsenetClient
 
                 if (responseCode != (int)UsenetResponseType.ArticleRetrievedBodyFollows)
                 {
+                    await DrainUnexpectedMultiLineAsync(responseCode, operationCts.Token)
+                        .ConfigureAwait(false);
                     completionResult =
                         responseCode == (int)UsenetResponseType.NoArticleWithThatMessageId &&
                         completionResult != ArticleBodyResult.NotRetrieved
@@ -192,7 +240,7 @@ public partial class UsenetClient
                     .ConfigureAwait(false);
                 if (drainFailure != null)
                 {
-                    RecordBackgroundFailure(drainFailure);
+                    RecordConnectionFailure(drainFailure);
                 }
 
                 completionResult =
@@ -213,7 +261,7 @@ public partial class UsenetClient
                 .ConfigureAwait(false);
             if (drainFailure != null)
             {
-                RecordBackgroundFailure(drainFailure);
+                RecordConnectionFailure(drainFailure);
             }
 
             completionResult = drainFailure == null
@@ -224,7 +272,7 @@ public partial class UsenetClient
         {
             failure = exception;
             completionResult = ArticleBodyResult.NotRetrieved;
-            RecordBackgroundFailure(exception);
+            RecordConnectionFailure(exception);
         }
         finally
         {
@@ -254,6 +302,15 @@ public partial class UsenetClient
                 var responseCode = ParseResponseCode(response);
                 if (responseCode != (int)UsenetResponseType.ArticleRetrievedBodyFollows)
                 {
+                    if (IsMultiLineCode(responseCode))
+                    {
+                        var unexpectedDrain = await TryDrainBodyAsync().ConfigureAwait(false);
+                        if (unexpectedDrain != null)
+                        {
+                            return unexpectedDrain;
+                        }
+                    }
+
                     continue;
                 }
 

@@ -1,5 +1,6 @@
 using System.Text;
 using UsenetSharp.Clients;
+using UsenetSharp.Exceptions;
 
 namespace UsenetSharpTest.Protocol;
 
@@ -25,6 +26,27 @@ public class NntpLineReaderTests
 
         Assert.That(first, Is.EqualTo("first response"));
         Assert.That(second, Is.EqualTo("second response"));
+    }
+
+    [Test]
+    public async Task ReadLineBytesAsync_EofWithUnterminatedLine_Throws()
+    {
+        await using var stream = new MemoryStream(Encoding.Latin1.GetBytes("22"));
+        using var reader = new NntpLineReader(stream);
+
+        var exception = Assert.ThrowsAsync<UsenetProtocolException>(async () =>
+            await reader.ReadLineAsync(CancellationToken.None));
+        Assert.That(exception!.Message, Does.Contain("unterminated line"));
+    }
+
+    [Test]
+    public async Task ReadLineBytesAsync_CleanEofAfterCompleteLine_ReturnsNull()
+    {
+        await using var stream = new MemoryStream(Encoding.Latin1.GetBytes("205 Goodbye\r\n"));
+        using var reader = new NntpLineReader(stream);
+
+        Assert.That(await reader.ReadLineAsync(CancellationToken.None), Is.EqualTo("205 Goodbye"));
+        Assert.That(await reader.ReadLineAsync(CancellationToken.None), Is.Null);
     }
 
     private sealed class CancelledRefillStream(

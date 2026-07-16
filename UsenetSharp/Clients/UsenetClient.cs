@@ -30,6 +30,12 @@ public partial class UsenetClient : IUsenetClient, IDisposable, IAsyncDisposable
                 nameof(options), "AbandonedBodyDrainLimit cannot be negative.");
         }
 
+        if (options.MaxPipelineDepth < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(options), "MaxPipelineDepth must be at least 1.");
+        }
+
         if (!Enum.IsDefined(options.CertificateRevocationCheckMode))
         {
             throw new ArgumentOutOfRangeException(
@@ -95,6 +101,15 @@ public partial class UsenetClient : IUsenetClient, IDisposable, IAsyncDisposable
         if (Interlocked.Exchange(ref _disposeState, 1) != 0)
         {
             return;
+        }
+
+        try
+        {
+            await TryQuitBestEffortAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best-effort only; disposal must proceed.
         }
 
         CancelConnectionLifetime();

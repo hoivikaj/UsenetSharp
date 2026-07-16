@@ -41,17 +41,23 @@ public partial class UsenetClient
             ThrowIfNotConnected();
             operationCts = CreateOperationTokenSource(cancellationToken);
 
-            // Send ARTICLE command with message-id
-            await WriteMessageIdCommandAsync("ARTICLE", segmentId, operationCts.Token)
-                .ConfigureAwait(false);
-            var response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);
-            var responseCode = ParseResponseCode(response);
+            var (responseCode, response) = await ExchangeSingleLineAsync(
+                ct => WriteMessageIdCommandAsync("ARTICLE", segmentId, ct),
+                operationCts.Token).ConfigureAwait(false);
 
             // Article retrieved - head and body follow
             if (responseCode == (int)UsenetResponseType.ArticleRetrievedHeadAndBodyFollow)
             {
-                // Parse headers
-                var headers = await ParseArticleHeadersAsync(operationCts.Token).ConfigureAwait(false);
+                UsenetArticleHeader headers;
+                try
+                {
+                    headers = await ParseArticleHeadersAsync(operationCts.Token).ConfigureAwait(false);
+                }
+                catch (Exception e)
+                {
+                    RecordConnectionFailure(e);
+                    throw;
+                }
 
                 // Create a pipe for streaming the body data
                 var pipe = new Pipe(new PipeOptions(
@@ -69,16 +75,19 @@ public partial class UsenetClient
                 {
                     SegmentId = segmentId,
                     ResponseCode = responseCode,
-                    ResponseMessage = response!,
+                    ResponseMessage = response,
                     ArticleHeaders = headers,
                     Stream = pipe.Reader.AsStream(),
                 };
             }
 
+            await DrainUnexpectedMultiLineAsync(responseCode, operationCts.Token)
+                .ConfigureAwait(false);
+
             return new UsenetArticleResponse()
             {
                 ResponseCode = responseCode,
-                ResponseMessage = response!,
+                ResponseMessage = response,
                 SegmentId = segmentId,
                 Stream = null,
                 ArticleHeaders = null
@@ -100,10 +109,23 @@ public partial class UsenetClient
         bool allowDotTerminator = false)
     {
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var allHeaders = new List<KeyValuePair<string, string>>();
         string? currentHeaderName = null;
         var currentHeaderValue = new StringBuilder();
         var totalHeaderBytes = 0;
         var headerCount = 0;
+
+        void CommitCurrentHeader()
+        {
+            if (currentHeaderName == null)
+            {
+                return;
+            }
+
+            var value = currentHeaderValue.ToString().Trim();
+            headers.TryAdd(currentHeaderName, value);
+            allHeaders.Add(new KeyValuePair<string, string>(currentHeaderName, value));
+        }
 
         while (true)
         {
@@ -119,11 +141,7 @@ public partial class UsenetClient
             {
                 if (allowDotTerminator)
                 {
-                    if (currentHeaderName != null)
-                    {
-                        headers[currentHeaderName] = currentHeaderValue.ToString().Trim();
-                    }
-
+                    CommitCurrentHeader();
                     break;
                 }
 
@@ -133,12 +151,27 @@ public partial class UsenetClient
 
             if (string.IsNullOrEmpty(line))
             {
-                // Save the last header if any
-                if (currentHeaderName != null)
+                if (allowDotTerminator)
                 {
-                    headers[currentHeaderName] = currentHeaderValue.ToString().Trim();
+                    // Malformed blank line inside a 221 block. Skip until the
+                    // real terminator so the connection stays at a command boundary.
+                    while (await ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } extra
+                           && extra != ".")
+                    {
+                        totalHeaderBytes += Encoding.Latin1.GetByteCount(extra) + 2;
+                        if (totalHeaderBytes > 256 * 1024)
+                        {
+                            throw new UsenetProtocolException(
+                                "NNTP article headers exceeded the 256 KiB limit.");
+                        }
+                    }
+
+                    CommitCurrentHeader();
+                    break;
                 }
 
+                // ARTICLE mode: blank line legitimately ends the header block.
+                CommitCurrentHeader();
                 break;
             }
 
@@ -161,10 +194,7 @@ public partial class UsenetClient
             else
             {
                 // Save the previous header if any
-                if (currentHeaderName != null)
-                {
-                    headers[currentHeaderName] = currentHeaderValue.ToString().Trim();
-                }
+                CommitCurrentHeader();
 
                 // Parse new header: "Name: Value"
                 var colonIndex = line.IndexOf(':');
@@ -185,12 +215,18 @@ public partial class UsenetClient
                         currentHeaderValue.Append(line.Substring(colonIndex + 1).Trim());
                     }
                 }
+                else
+                {
+                    currentHeaderName = null;
+                    currentHeaderValue.Clear();
+                }
             }
         }
 
         return new UsenetArticleHeader
         {
-            Headers = headers
+            Headers = headers,
+            AllHeaders = allHeaders
         };
     }
 }

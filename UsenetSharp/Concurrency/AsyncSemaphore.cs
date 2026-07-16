@@ -13,6 +13,22 @@ public class AsyncSemaphore : IDisposable
         _currentCount = initialCount;
     }
 
+    public bool TryWait()
+    {
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            if (_currentCount > 0)
+            {
+                _currentCount--;
+                return true;
+            }
+
+            return false;
+        }
+    }
+
     public Task WaitAsync(CancellationToken cancellationToken = default)
     {
         lock (_lock)

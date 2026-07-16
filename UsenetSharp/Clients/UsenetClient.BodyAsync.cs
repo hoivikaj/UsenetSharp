@@ -48,11 +48,9 @@ public partial class UsenetClient
             ThrowIfNotConnected();
             operationCts = CreateOperationTokenSource(cancellationToken);
 
-            // Send BODY command with message-id
-            await WriteMessageIdCommandAsync("BODY", segmentId, operationCts.Token)
-                .ConfigureAwait(false);
-            var response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);
-            var responseCode = ParseResponseCode(response);
+            var (responseCode, response) = await ExchangeSingleLineAsync(
+                ct => WriteMessageIdCommandAsync("BODY", segmentId, ct),
+                operationCts.Token).ConfigureAwait(false);
 
             // Article retrieved - body follows
             if (responseCode == (int)UsenetResponseType.ArticleRetrievedBodyFollows)
@@ -73,15 +71,18 @@ public partial class UsenetClient
                 {
                     SegmentId = segmentId,
                     ResponseCode = responseCode,
-                    ResponseMessage = response!,
+                    ResponseMessage = response,
                     Stream = pipe.Reader.AsStream(),
                 };
             }
 
+            await DrainUnexpectedMultiLineAsync(responseCode, operationCts.Token)
+                .ConfigureAwait(false);
+
             return new UsenetBodyResponse()
             {
                 ResponseCode = responseCode,
-                ResponseMessage = response!,
+                ResponseMessage = response,
                 SegmentId = segmentId,
                 Stream = null
             };
@@ -133,10 +134,9 @@ public partial class UsenetClient
             ThrowIfNotConnected();
             operationCts = CreateOperationTokenSource(cancellationToken);
 
-            await WriteMessageIdCommandAsync("BODY", segmentId, operationCts.Token)
-                .ConfigureAwait(false);
-            var response = await ReadLineAsync(operationCts.Token).ConfigureAwait(false);
-            var responseCode = ParseResponseCode(response);
+            var (responseCode, response) = await ExchangeSingleLineAsync(
+                ct => WriteMessageIdCommandAsync("BODY", segmentId, ct),
+                operationCts.Token).ConfigureAwait(false);
 
             if (responseCode == (int)UsenetResponseType.ArticleRetrievedBodyFollows)
             {
@@ -160,16 +160,19 @@ public partial class UsenetClient
                 {
                     SegmentId = segmentId,
                     ResponseCode = responseCode,
-                    ResponseMessage = response!,
+                    ResponseMessage = response,
                     Stream = new YencStream(
                         pipe.Reader.AsStream(), headersCompletion.Task),
                 };
             }
 
+            await DrainUnexpectedMultiLineAsync(responseCode, operationCts.Token)
+                .ConfigureAwait(false);
+
             return new UsenetDecodedBodyResponse
             {
                 ResponseCode = responseCode,
-                ResponseMessage = response!,
+                ResponseMessage = response,
                 SegmentId = segmentId,
                 Stream = null
             };
@@ -212,6 +215,7 @@ public partial class UsenetClient
             var headersRead = false;
             var isMultipart = false;
             long drainedBytes = 0;
+            long skippedBytes = 0;
             var ybeginLength = 0;
             RapidYencDecoderState? decoderState = RapidYencDecoderState.RYDEC_STATE_CRLF;
             uint decodedCrc32 = 0;
@@ -261,13 +265,13 @@ public partial class UsenetClient
                             encodedBuffer.AsMemory(0, encodedLength),
                             decoderState,
                             decodedCrc32,
-                            _options.ValidateDecodedBodyCrc32,
+                            _options.CrcValidation != YencCrcValidationMode.Off,
                             cancellationToken).ConfigureAwait(false);
                         decoderState = flush.DecoderState;
                         decodedCrc32 = flush.Crc32;
                     }
 
-                    if (_options.ValidateDecodedBodyCrc32 && !dataEnded)
+                    if (_options.CrcValidation == YencCrcValidationMode.Require && !dataEnded)
                     {
                         throw new InvalidDataException(
                             "Reached end of NNTP body without finding a yEnc trailer.");
@@ -290,6 +294,13 @@ public partial class UsenetClient
 
                 if (dataEnded)
                 {
+                    skippedBytes += lineBytes.Length + 2;
+                    if (skippedBytes > _options.AbandonedBodyDrainLimit)
+                    {
+                        throw new UsenetProtocolException(
+                            "The NNTP body contained more non-yEnc data than the configured drain limit.");
+                    }
+
                     continue;
                 }
 
@@ -302,6 +313,15 @@ public partial class UsenetClient
                             ybeginBuffer = ArrayPool<byte>.Shared.Rent(lineBytes.Length);
                             lineBytes.Span.CopyTo(ybeginBuffer);
                             ybeginLength = lineBytes.Length;
+                        }
+                        else
+                        {
+                            skippedBytes += lineBytes.Length + 2;
+                            if (skippedBytes > _options.AbandonedBodyDrainLimit)
+                            {
+                                throw new UsenetProtocolException(
+                                    "The NNTP body contained more non-yEnc data than the configured drain limit.");
+                            }
                         }
 
                         continue;
@@ -332,7 +352,7 @@ public partial class UsenetClient
                             encodedBuffer.AsMemory(0, encodedLength),
                             decoderState,
                             decodedCrc32,
-                            _options.ValidateDecodedBodyCrc32,
+                            _options.CrcValidation != YencCrcValidationMode.Off,
                             cancellationToken).ConfigureAwait(false);
                         encodedLength = 0;
                         decoderState = flush.DecoderState;
@@ -340,10 +360,10 @@ public partial class UsenetClient
                         shouldWrite = !flush.Result.IsCompleted && !flush.Result.IsCanceled;
                     }
 
-                    if (_options.ValidateDecodedBodyCrc32 && shouldWrite)
+                    if (_options.CrcValidation != YencCrcValidationMode.Off && shouldWrite)
                     {
                         ValidateDecodedBodyCrc32(
-                            lineBytes.Span, isMultipart, decodedCrc32);
+                            lineBytes.Span, isMultipart, decodedCrc32, _options.CrcValidation);
                     }
 
                     continue;
@@ -358,7 +378,7 @@ public partial class UsenetClient
                         encodedBuffer.AsMemory(0, encodedLength),
                         decoderState,
                         decodedCrc32,
-                        _options.ValidateDecodedBodyCrc32,
+                        _options.CrcValidation != YencCrcValidationMode.Off,
                         cancellationToken).ConfigureAwait(false);
                     encodedLength = 0;
                     decoderState = flush.DecoderState;
@@ -388,7 +408,7 @@ public partial class UsenetClient
                         encodedBuffer.AsMemory(0, encodedLength),
                         decoderState,
                         decodedCrc32,
-                        _options.ValidateDecodedBodyCrc32,
+                        _options.CrcValidation != YencCrcValidationMode.Off,
                         cancellationToken).ConfigureAwait(false);
                     encodedLength = 0;
                     decoderState = flush.DecoderState;
@@ -404,14 +424,14 @@ public partial class UsenetClient
             if (drainFailure != null)
             {
                 connectionReusable = false;
-                RecordBackgroundFailure(drainFailure);
+                RecordConnectionFailure(drainFailure);
             }
         }
         catch (Exception e)
         {
             failure = e;
             connectionReusable = false;
-            RecordBackgroundFailure(e);
+            RecordConnectionFailure(e);
         }
         finally
         {
@@ -488,11 +508,17 @@ public partial class UsenetClient
     private static void ValidateDecodedBodyCrc32(
         ReadOnlySpan<byte> yendLine,
         bool isMultipart,
-        uint actualCrc32)
+        uint actualCrc32,
+        YencCrcValidationMode mode)
     {
         var fieldName = isMultipart ? "pcrc32"u8 : "crc32"u8;
         if (!TryParseYencTrailerCrc32(yendLine, fieldName, out var expectedCrc32))
         {
+            if (mode == YencCrcValidationMode.WhenPresent)
+            {
+                return;
+            }
+
             throw new InvalidDataException(
                 $"The yEnc trailer does not contain a valid {Encoding.ASCII.GetString(fieldName)} value.");
         }
@@ -662,13 +688,13 @@ public partial class UsenetClient
             var drainFailure = await TryDrainBodyAsync().ConfigureAwait(false);
             if (drainFailure != null)
             {
-                RecordBackgroundFailure(drainFailure);
+                RecordConnectionFailure(drainFailure);
             }
         }
         catch (Exception e)
         {
             failure = e;
-            RecordBackgroundFailure(e);
+            RecordConnectionFailure(e);
         }
         finally
         {
@@ -735,7 +761,7 @@ public partial class UsenetClient
         }
     }
 
-    private void RecordBackgroundFailure(Exception failure)
+    private void RecordConnectionFailure(Exception failure)
     {
         lock (_stateLock)
         {
