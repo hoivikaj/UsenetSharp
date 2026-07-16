@@ -908,6 +908,111 @@ public class UsenetClientDeterministicTests
         Assert.That(response.ResponseCode, Is.EqualTo(200));
     }
 
+    [Test]
+    public async Task DateAsync_UnexpectedMultiLineCode_DrainsPayloadAndKeepsSync()
+    {
+        var dateCalls = 0;
+        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
+        {
+            if (command != "DATE")
+            {
+                return;
+            }
+
+            dateCalls++;
+            if (dateCalls == 1)
+            {
+                await writer.WriteAsync("100 Help text follows\r\nhelp line\r\n.\r\n");
+            }
+            else
+            {
+                await writer.WriteLineAsync("111 20260709213000");
+            }
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var first = await client.DateAsync(CancellationToken.None);
+        Assert.That(first.ResponseCode, Is.EqualTo(100));
+        Assert.That(first.DateTime, Is.Null);
+        var second = await client.DateAsync(CancellationToken.None);
+        Assert.That(second.ResponseCode, Is.EqualTo(111));
+        Assert.That(client.IsHealthy, Is.True);
+    }
+
+    [Test]
+    public async Task ModeReaderAsync_UnexpectedMultiLineCode_DrainsPayloadAndKeepsSync()
+    {
+        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
+        {
+            if (command == "MODE READER")
+            {
+                await writer.WriteAsync("100 Help text follows\r\nhelp line\r\n.\r\n");
+            }
+            else if (command == "DATE")
+            {
+                await writer.WriteLineAsync("111 20260709213000");
+            }
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var mode = await client.ModeReaderAsync(CancellationToken.None);
+        Assert.That(mode.ResponseCode, Is.EqualTo(100));
+        var date = await client.DateAsync(CancellationToken.None);
+        Assert.That(date.ResponseCode, Is.EqualTo(111));
+        Assert.That(client.IsHealthy, Is.True);
+    }
+
+    [Test]
+    public async Task AuthenticateAsync_UnexpectedMultiLineCode_DrainsPayloadAndKeepsSync()
+    {
+        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
+        {
+            if (command.StartsWith("AUTHINFO USER", StringComparison.Ordinal))
+            {
+                await writer.WriteAsync("215 information follows\r\ninfo\r\n.\r\n");
+            }
+            else if (command == "DATE")
+            {
+                await writer.WriteLineAsync("111 20260709213000");
+            }
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var auth = await client.AuthenticateAsync("user", "pass", CancellationToken.None);
+        Assert.That(auth.ResponseCode, Is.EqualTo(215));
+        var date = await client.DateAsync(CancellationToken.None);
+        Assert.That(date.ResponseCode, Is.EqualTo(111));
+        Assert.That(client.IsHealthy, Is.True);
+    }
+
+    [Test]
+    public async Task DateAsync_UnexpectedMultiLineDrainOverflow_PoisonsConnection()
+    {
+        var huge = new string('x', 2048);
+        await using var server = new ScriptedNntpServer(async (_, writer, _) =>
+        {
+            await writer.WriteAsync("100 overflow\r\n");
+            for (var i = 0; i < 8; i++)
+            {
+                await writer.WriteAsync(huge + "\r\n");
+            }
+
+            await writer.WriteAsync(".\r\n");
+        });
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            AbandonedBodyDrainLimit = 1024
+        });
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var response = await client.DateAsync(CancellationToken.None);
+        Assert.That(response.ResponseCode, Is.EqualTo(100));
+        Assert.That(client.IsHealthy, Is.False);
+    }
+
     [TestCase("400 service unavailable", true)]
     [TestCase("502 permission denied", false)]
     public async Task ConnectAsync_GreetingFailure_SetsIsTransient(string greeting, bool isTransient)

@@ -87,6 +87,13 @@ public partial class UsenetClient
                 ct => WriteCommandAsync(ModeReaderCommand, ct),
                 operationCts.Token).ConfigureAwait(false);
 
+            if (responseCode != (int)UsenetResponseType.ServerReadyPostingAllowed &&
+                responseCode != (int)UsenetResponseType.ServerReadyNoPostingAllowed)
+            {
+                await DrainUnexpectedMultiLineAsync(responseCode, operationCts.Token)
+                    .ConfigureAwait(false);
+            }
+
             return new UsenetResponse
             {
                 ResponseCode = responseCode,

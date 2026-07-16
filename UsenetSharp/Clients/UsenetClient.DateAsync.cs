@@ -33,6 +33,11 @@ public partial class UsenetClient
                     throw;
                 }
             }
+            else
+            {
+                await DrainUnexpectedMultiLineAsync(responseCode, operationCts.Token)
+                    .ConfigureAwait(false);
+            }
 
             return new UsenetDateResponse
             {
