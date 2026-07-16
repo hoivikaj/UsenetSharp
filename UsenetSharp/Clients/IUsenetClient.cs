@@ -101,4 +101,26 @@ public interface IUsenetClient
         throw new NotSupportedException(
             $"{GetType().Name} does not support MODE READER.");
     }
+
+    /// <summary>
+    /// Probes a segment's yEnc headers via BODY without delivering the body.
+    /// </summary>
+    Task<UsenetYencHeaderResponse> YencHeadersAsync(
+        SegmentId segmentId, CancellationToken cancellationToken)
+    {
+        return YencHeadersAsync(
+            segmentId, ConnectionReleasePolicy.DrainToReuse, cancellationToken);
+    }
+
+    /// <summary>
+    /// Probes a segment's yEnc headers via BODY, releasing the connection
+    /// according to <paramref name="releasePolicy"/>.
+    /// </summary>
+    Task<UsenetYencHeaderResponse> YencHeadersAsync(
+        SegmentId segmentId, ConnectionReleasePolicy releasePolicy,
+        CancellationToken cancellationToken)
+    {
+        throw new NotSupportedException(
+            $"{GetType().Name} does not support yEnc header probes.");
+    }
 }

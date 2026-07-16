@@ -2158,6 +2158,197 @@ public class UsenetClientDeterministicTests
         return stuffed.ToArray();
     }
 
+    [Test]
+    public async Task YencHeadersAsync_MultipartProbe_DrainsAndReusesConnection()
+    {
+        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
+        {
+            if (command.StartsWith("BODY", StringComparison.Ordinal))
+            {
+                await writer.WriteLineAsync("222 0 <probe@example> body");
+                await writer.WriteLineAsync("=ybegin part=3 total=10 line=128 size=7680000 name=movie.mkv");
+                await writer.WriteLineAsync("=ypart begin=1536001 end=2304000");
+                await writer.WriteLineAsync("ENCODED-DATA-LINE");
+                await writer.WriteLineAsync("=yend size=768000 part=3 pcrc32=12345678");
+                await writer.WriteLineAsync(".");
+            }
+            else
+            {
+                await writer.WriteLineAsync("111 20260715120000");
+            }
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var response = await client.YencHeadersAsync(
+            new SegmentId("probe@example"),
+            ConnectionReleasePolicy.DrainToReuse,
+            CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.ResponseCode, Is.EqualTo(222));
+            Assert.That(response.YencHeader, Is.Not.Null);
+            Assert.That(response.YencHeader!.PartOffset, Is.EqualTo(1_536_000));
+            Assert.That(response.YencHeader.PartSize, Is.EqualTo(768_000));
+            Assert.That(response.YencHeader.PartNumber, Is.EqualTo(3));
+            Assert.That(response.YencHeader.FileSize, Is.EqualTo(7_680_000));
+            Assert.That(client.IsHealthy, Is.True);
+        });
+
+        var date = await client.DateAsync(CancellationToken.None);
+        Assert.That(date.ResponseCode, Is.EqualTo(111));
+    }
+
+    [Test]
+    public async Task YencHeadersAsync_AbandonConnection_ReturnsHeaderAndPoisons()
+    {
+        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
+        {
+            await writer.WriteLineAsync("222 0 <probe@example> body");
+            await writer.WriteLineAsync("=ybegin part=1 total=2 line=128 size=1000 name=a.bin");
+            await writer.WriteLineAsync("=ypart begin=1 end=500");
+            // Remainder intentionally never sent: abandon must not read it.
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var response = await client.YencHeadersAsync(
+            new SegmentId("probe@example"),
+            ConnectionReleasePolicy.AbandonConnection,
+            CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.YencHeader, Is.Not.Null);
+            Assert.That(response.YencHeader!.PartOffset, Is.EqualTo(0));
+            Assert.That(response.YencHeader.PartSize, Is.EqualTo(500));
+            Assert.That(client.IsHealthy, Is.False);
+        });
+        Assert.ThrowsAsync<UsenetProtocolException>(
+            () => client.DateAsync(CancellationToken.None));
+    }
+
+    [Test]
+    public async Task YencHeadersAsync_SinglePartArticle_ParsesWithoutYpart()
+    {
+        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
+        {
+            await writer.WriteLineAsync("222 0 <probe@example> body");
+            await writer.WriteLineAsync("=ybegin line=128 size=500 name=a.bin");
+            await writer.WriteLineAsync("ENCODED-DATA-LINE");
+            await writer.WriteLineAsync("=yend size=500 crc32=abcdef12");
+            await writer.WriteLineAsync(".");
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var response = await client.YencHeadersAsync(
+            new SegmentId("probe@example"), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.YencHeader, Is.Not.Null);
+            Assert.That(response.YencHeader!.FileSize, Is.EqualTo(500));
+            Assert.That(response.YencHeader.PartOffset, Is.EqualTo(0));
+            Assert.That(response.YencHeader.PartSize, Is.EqualTo(500));
+            Assert.That(client.IsHealthy, Is.True);
+        });
+    }
+
+    [Test]
+    public async Task YencHeadersAsync_NonYencBody_ReturnsNullHeaderAndReuses()
+    {
+        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
+        {
+            if (command.StartsWith("BODY", StringComparison.Ordinal))
+            {
+                await writer.WriteLineAsync("222 0 <probe@example> body");
+                await writer.WriteLineAsync("just a text article");
+                await writer.WriteLineAsync(".");
+            }
+            else
+            {
+                await writer.WriteLineAsync("111 20260715120000");
+            }
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var response = await client.YencHeadersAsync(
+            new SegmentId("probe@example"), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.ResponseCode, Is.EqualTo(222));
+            Assert.That(response.YencHeader, Is.Null);
+            Assert.That(client.IsHealthy, Is.True);
+        });
+        var date = await client.DateAsync(CancellationToken.None);
+        Assert.That(date.ResponseCode, Is.EqualTo(111));
+    }
+
+    [Test]
+    public async Task YencHeadersAsync_MissingArticle_ReturnsCleanMiss()
+    {
+        await using var server = new ScriptedNntpServer(async (_, writer, _) =>
+            await writer.WriteLineAsync("430 no such article"));
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var response = await client.YencHeadersAsync(
+            new SegmentId("missing@example"), CancellationToken.None);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.ResponseCode, Is.EqualTo(430));
+            Assert.That(response.YencHeader, Is.Null);
+            Assert.That(client.IsHealthy, Is.True);
+        });
+    }
+
+    [Test]
+    public async Task YencHeadersAsync_PreYbeginJunkBeyondDrainLimit_PoisonsConnection()
+    {
+        var options = new UsenetClientOptions { AbandonedBodyDrainLimit = 1024 };
+        await using var server = new ScriptedNntpServer(async (_, writer, _) =>
+        {
+            await writer.WriteLineAsync("222 0 <probe@example> body");
+            for (var i = 0; i < 64; i++)
+            {
+                await writer.WriteLineAsync(new string('x', 64)); // 64 × 66 B > 1 KiB
+            }
+
+            await writer.WriteLineAsync(".");
+        });
+        await using var client = new UsenetClient(options);
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        Assert.ThrowsAsync<UsenetProtocolException>(() => client.YencHeadersAsync(
+            new SegmentId("probe@example"), CancellationToken.None));
+        Assert.That(client.IsHealthy, Is.False);
+    }
+
+    [Test]
+    public async Task YencHeadersAsync_TruncatedBeforeHeaders_PoisonsConnection()
+    {
+        await using var server = ScriptedNntpServer.StartConnectionScript(
+            async (reader, writer, cancellationToken) =>
+            {
+                Assert.That(
+                    await reader.ReadLineAsync(cancellationToken),
+                    Is.EqualTo("BODY <probe@example>"));
+                await writer.WriteLineAsync("222 0 <probe@example> body");
+                // Handler returns without body or terminator: server closes.
+            });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        Assert.ThrowsAsync<UsenetProtocolException>(() => client.YencHeadersAsync(
+            new SegmentId("probe@example"), CancellationToken.None));
+        Assert.That(client.IsHealthy, Is.False);
+    }
+
     private static async Task WriteYencArticleAsync(
         StreamWriter writer,
         byte[] decoded,
