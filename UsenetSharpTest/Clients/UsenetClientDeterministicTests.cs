@@ -717,6 +717,43 @@ public class UsenetClientDeterministicTests
     }
 
     [Test]
+    public async Task BodyAsync_UnterminatedBodyLineAtEof_FailsWithoutEmittingPartialLine()
+    {
+        await using var server = new ScriptedNntpServer(async (_, writer, _) =>
+        {
+            await writer.WriteAsync("222 0 <id>\r\nBODY-DATA");
+            throw new IOException("Close scripted connection.");
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+        var completion = new TaskCompletionSource<ArticleBodyResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var response = await client.BodyAsync(
+            "article@example.com", completion.SetResult, CancellationToken.None);
+        using var reader = new StreamReader(response.Stream!, Encoding.Latin1);
+        Assert.ThrowsAsync<UsenetProtocolException>(async () => await reader.ReadToEndAsync());
+        Assert.That(await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.EqualTo(ArticleBodyResult.NotRetrieved));
+    }
+
+    [Test]
+    public async Task StatAsync_TruncatedStatusLineAtEof_ThrowsProtocolException()
+    {
+        await using var server = new ScriptedNntpServer(async (_, writer, _) =>
+        {
+            await writer.WriteAsync("22");
+            throw new IOException("Close scripted connection.");
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        Assert.ThrowsAsync<UsenetProtocolException>(() =>
+            client.StatAsync("article@example.com", CancellationToken.None));
+        Assert.That(client.IsHealthy, Is.False);
+    }
+
+    [Test]
     public async Task BodyAsync_StalledTransferTimesOutAndReportsNotRetrieved()
     {
         var timeProvider = new ManualTimeProvider();
