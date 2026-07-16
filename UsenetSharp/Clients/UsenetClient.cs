@@ -77,10 +77,7 @@ public partial class UsenetClient : IUsenetClient, IDisposable, IAsyncDisposable
                 return false;
             }
 
-            lock (_stateLock)
-            {
-                return _backgroundException == null;
-            }
+            return _backgroundException == null;
         }
     }
 

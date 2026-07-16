@@ -161,12 +161,7 @@ public partial class UsenetClient
 
     private void ThrowIfUnhealthy()
     {
-        Exception? backgroundException;
-        lock (_stateLock)
-        {
-            backgroundException = _backgroundException?.SourceException;
-        }
-
+        var backgroundException = _backgroundException?.SourceException;
         if (backgroundException != null)
         {
             throw new UsenetProtocolException(
