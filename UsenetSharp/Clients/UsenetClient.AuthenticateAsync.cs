@@ -46,6 +46,8 @@ public partial class UsenetClient
             var (userResponseCode, userResponse) = await ExchangeSingleLineAsync(
                 ct => new ValueTask(WriteLineAsync($"AUTHINFO USER {user}".AsMemory(), ct)),
                 operationCts.Token).ConfigureAwait(false);
+            await DrainUnexpectedMultiLineAsync(userResponseCode, operationCts.Token)
+                .ConfigureAwait(false);
 
             // Password required
             if (userResponseCode == (int)UsenetResponseType.PasswordRequired)
@@ -53,6 +55,8 @@ public partial class UsenetClient
                 var (passResponseCode, passResponse) = await ExchangeSingleLineAsync(
                     ct => new ValueTask(WriteLineAsync($"AUTHINFO PASS {pass}".AsMemory(), ct)),
                     operationCts.Token).ConfigureAwait(false);
+                await DrainUnexpectedMultiLineAsync(passResponseCode, operationCts.Token)
+                    .ConfigureAwait(false);
 
                 return new UsenetResponse()
                 {

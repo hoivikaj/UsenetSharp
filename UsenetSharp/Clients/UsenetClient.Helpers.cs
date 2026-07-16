@@ -9,6 +9,16 @@ public partial class UsenetClient
 {
     private static readonly byte[] DateCommand = "DATE\r\n"u8.ToArray();
 
+    /// <summary>
+    /// Replaces the connection stream for deterministic mid-write failure tests.
+    /// </summary>
+    internal void ReplaceConnectionStreamForTests(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        ThrowIfDisposed();
+        _stream = stream;
+    }
+
     private void CleanupConnection(bool createNewLifetime = true)
     {
         Volatile.Write(ref _connectionState, 0);

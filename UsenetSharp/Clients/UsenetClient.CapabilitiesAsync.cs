@@ -52,8 +52,16 @@ public partial class UsenetClient
             }
             catch (Exception e)
             {
-                RecordConnectionFailure(e);
+                RecordConnectionFailure(e);            // framing failure: FIFO unknown
                 throw;
+            }
+
+            if (capabilities.Count == 0 ||
+                !capabilities[0].StartsWith("VERSION ", StringComparison.OrdinalIgnoreCase))
+            {
+                // Block fully consumed — connection is at a clean boundary; do not poison.
+                throw new UsenetProtocolException(
+                    "CAPABILITIES response must begin with VERSION 2.");
             }
 
             return new UsenetCapabilitiesResponse
@@ -86,6 +94,13 @@ public partial class UsenetClient
             var (responseCode, response) = await ExchangeSingleLineAsync(
                 ct => WriteCommandAsync(ModeReaderCommand, ct),
                 operationCts.Token).ConfigureAwait(false);
+
+            if (responseCode != (int)UsenetResponseType.ServerReadyPostingAllowed &&
+                responseCode != (int)UsenetResponseType.ServerReadyNoPostingAllowed)
+            {
+                await DrainUnexpectedMultiLineAsync(responseCode, operationCts.Token)
+                    .ConfigureAwait(false);
+            }
 
             return new UsenetResponse
             {
@@ -129,13 +144,6 @@ public partial class UsenetClient
             }
 
             capabilities.Add(line);
-        }
-
-        if (capabilities.Count == 0 ||
-            !capabilities[0].StartsWith("VERSION ", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new UsenetProtocolException(
-                "CAPABILITIES response must begin with VERSION 2.");
         }
 
         return capabilities;

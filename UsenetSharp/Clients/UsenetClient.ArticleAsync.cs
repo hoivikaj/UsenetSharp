@@ -155,9 +155,17 @@ public partial class UsenetClient
                 {
                     // Malformed blank line inside a 221 block. Skip until the
                     // real terminator so the connection stays at a command boundary.
-                    while (await ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } extra
-                           && extra != ".")
+                    while (true)
                     {
+                        var extra = await ReadLineAsync(cancellationToken).ConfigureAwait(false)
+                            ?? throw new UsenetProtocolException(
+                                "The NNTP connection closed before the header terminator was received.");
+
+                        if (extra == ".")
+                        {
+                            break;
+                        }
+
                         totalHeaderBytes += Encoding.Latin1.GetByteCount(extra) + 2;
                         if (totalHeaderBytes > 256 * 1024)
                         {

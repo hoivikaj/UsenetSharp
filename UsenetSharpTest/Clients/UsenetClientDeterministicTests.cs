@@ -888,6 +888,54 @@ public class UsenetClientDeterministicTests
     }
 
     [Test]
+    public async Task CapabilitiesAsync_MissingVersion_ThrowsWithoutPoisoning()
+    {
+        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
+        {
+            if (command == "CAPABILITIES")
+            {
+                await writer.WriteAsync(
+                    "101 Capability list follows\r\n" +
+                    "READER\r\n" +
+                    "IHAVE\r\n" +
+                    ".\r\n");
+            }
+            else if (command == "DATE")
+            {
+                await writer.WriteLineAsync("111 20260709213000");
+            }
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var exception = Assert.ThrowsAsync<UsenetProtocolException>(() =>
+            client.CapabilitiesAsync(CancellationToken.None));
+        Assert.That(exception!.Message, Does.Contain("VERSION"));
+        Assert.That(client.IsHealthy, Is.True);
+        var date = await client.DateAsync(CancellationToken.None);
+        Assert.That(date.ResponseCode, Is.EqualTo(111));
+    }
+
+    [Test]
+    public async Task CapabilitiesAsync_TruncatedBlock_PoisonsConnection()
+    {
+        await using var server = new ScriptedNntpServer(async (_, writer, _) =>
+        {
+            await writer.WriteAsync(
+                "101 Capability list follows\r\n" +
+                "VERSION 2\r\n" +
+                "READER\r\n");
+            throw new IOException("Close scripted connection.");
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        Assert.ThrowsAsync<UsenetProtocolException>(() =>
+            client.CapabilitiesAsync(CancellationToken.None));
+        Assert.That(client.IsHealthy, Is.False);
+    }
+
+    [Test]
     public async Task ModeReaderAsync_ReturnsServerReady()
     {
         await using var server = new ScriptedNntpServer(async (command, writer, _) =>
@@ -906,6 +954,111 @@ public class UsenetClientDeterministicTests
 
         var response = await client.ModeReaderAsync(CancellationToken.None);
         Assert.That(response.ResponseCode, Is.EqualTo(200));
+    }
+
+    [Test]
+    public async Task DateAsync_UnexpectedMultiLineCode_DrainsPayloadAndKeepsSync()
+    {
+        var dateCalls = 0;
+        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
+        {
+            if (command != "DATE")
+            {
+                return;
+            }
+
+            dateCalls++;
+            if (dateCalls == 1)
+            {
+                await writer.WriteAsync("100 Help text follows\r\nhelp line\r\n.\r\n");
+            }
+            else
+            {
+                await writer.WriteLineAsync("111 20260709213000");
+            }
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var first = await client.DateAsync(CancellationToken.None);
+        Assert.That(first.ResponseCode, Is.EqualTo(100));
+        Assert.That(first.DateTime, Is.Null);
+        var second = await client.DateAsync(CancellationToken.None);
+        Assert.That(second.ResponseCode, Is.EqualTo(111));
+        Assert.That(client.IsHealthy, Is.True);
+    }
+
+    [Test]
+    public async Task ModeReaderAsync_UnexpectedMultiLineCode_DrainsPayloadAndKeepsSync()
+    {
+        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
+        {
+            if (command == "MODE READER")
+            {
+                await writer.WriteAsync("100 Help text follows\r\nhelp line\r\n.\r\n");
+            }
+            else if (command == "DATE")
+            {
+                await writer.WriteLineAsync("111 20260709213000");
+            }
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var mode = await client.ModeReaderAsync(CancellationToken.None);
+        Assert.That(mode.ResponseCode, Is.EqualTo(100));
+        var date = await client.DateAsync(CancellationToken.None);
+        Assert.That(date.ResponseCode, Is.EqualTo(111));
+        Assert.That(client.IsHealthy, Is.True);
+    }
+
+    [Test]
+    public async Task AuthenticateAsync_UnexpectedMultiLineCode_DrainsPayloadAndKeepsSync()
+    {
+        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
+        {
+            if (command.StartsWith("AUTHINFO USER", StringComparison.Ordinal))
+            {
+                await writer.WriteAsync("215 information follows\r\ninfo\r\n.\r\n");
+            }
+            else if (command == "DATE")
+            {
+                await writer.WriteLineAsync("111 20260709213000");
+            }
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var auth = await client.AuthenticateAsync("user", "pass", CancellationToken.None);
+        Assert.That(auth.ResponseCode, Is.EqualTo(215));
+        var date = await client.DateAsync(CancellationToken.None);
+        Assert.That(date.ResponseCode, Is.EqualTo(111));
+        Assert.That(client.IsHealthy, Is.True);
+    }
+
+    [Test]
+    public async Task DateAsync_UnexpectedMultiLineDrainOverflow_PoisonsConnection()
+    {
+        var huge = new string('x', 2048);
+        await using var server = new ScriptedNntpServer(async (_, writer, _) =>
+        {
+            await writer.WriteAsync("100 overflow\r\n");
+            for (var i = 0; i < 8; i++)
+            {
+                await writer.WriteAsync(huge + "\r\n");
+            }
+
+            await writer.WriteAsync(".\r\n");
+        });
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            AbandonedBodyDrainLimit = 1024
+        });
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var response = await client.DateAsync(CancellationToken.None);
+        Assert.That(response.ResponseCode, Is.EqualTo(100));
+        Assert.That(client.IsHealthy, Is.False);
     }
 
     [TestCase("400 service unavailable", true)]
@@ -965,6 +1118,77 @@ public class UsenetClientDeterministicTests
     }
 
     [Test]
+    public async Task DecodedBodiesAsync_WriteTimeout_PoisonsConnection()
+    {
+        await using var server = new ScriptedNntpServer((_, _, _) => Task.CompletedTask);
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            ReadTimeout = TimeSpan.FromMilliseconds(200)
+        });
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var writeStream = new ControllableWriteStream();
+        writeStream.SetMode(ControllableWriteStream.WriteMode.BlockUntilCancelled);
+        client.ReplaceConnectionStreamForTests(writeStream);
+
+        Assert.ThrowsAsync<TimeoutException>(() => client.DecodedBodiesAsync(
+            new SegmentId[] { "article@example.com" },
+            CancellationToken.None));
+        Assert.That(client.IsHealthy, Is.False);
+        var exception = Assert.ThrowsAsync<UsenetProtocolException>(() =>
+            client.StatAsync("other@example.com", CancellationToken.None));
+        Assert.That(exception!.Message, Does.Contain("connection unusable"));
+    }
+
+    [Test]
+    public async Task DecodedBodiesAsync_WriteCancelled_PoisonsConnection()
+    {
+        await using var server = new ScriptedNntpServer((_, _, _) => Task.CompletedTask);
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            ReadTimeout = TimeSpan.FromSeconds(30)
+        });
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var writeStream = new ControllableWriteStream();
+        writeStream.SetMode(ControllableWriteStream.WriteMode.BlockUntilCancelled);
+        client.ReplaceConnectionStreamForTests(writeStream);
+
+        using var cts = new CancellationTokenSource();
+        var batchTask = client.DecodedBodiesAsync(
+            new SegmentId[] { "article@example.com" },
+            cts.Token);
+        await writeStream.WriteEntered.WaitAsync(TimeSpan.FromSeconds(2));
+        cts.Cancel();
+
+        Assert.CatchAsync<OperationCanceledException>(async () => await batchTask);
+        Assert.That(client.IsHealthy, Is.False);
+        var exception = Assert.ThrowsAsync<UsenetProtocolException>(() =>
+            client.StatAsync("other@example.com", CancellationToken.None));
+        Assert.That(exception!.Message, Does.Contain("connection unusable"));
+    }
+
+    [Test]
+    public async Task DecodedBodiesAsync_WriteIOException_PoisonsConnection()
+    {
+        await using var server = new ScriptedNntpServer((_, _, _) => Task.CompletedTask);
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var writeStream = new ControllableWriteStream();
+        writeStream.SetMode(ControllableWriteStream.WriteMode.ThrowIOException);
+        client.ReplaceConnectionStreamForTests(writeStream);
+
+        Assert.ThrowsAsync<IOException>(() => client.DecodedBodiesAsync(
+            new SegmentId[] { "article@example.com" },
+            CancellationToken.None));
+        Assert.That(client.IsHealthy, Is.False);
+        var exception = Assert.ThrowsAsync<UsenetProtocolException>(() =>
+            client.StatAsync("other@example.com", CancellationToken.None));
+        Assert.That(exception!.Message, Does.Contain("connection unusable"));
+    }
+
+    [Test]
     public async Task HeadAsync_BlankLineInHeaders_ConsumesTerminatorAndKeepsSync()
     {
         await using var server = new ScriptedNntpServer(async (command, writer, _) =>
@@ -991,6 +1215,47 @@ public class UsenetClientDeterministicTests
         var stat = await client.StatAsync("article@example.com", CancellationToken.None);
         Assert.That(stat.ArticleExists, Is.True);
         Assert.That(client.IsHealthy, Is.True);
+    }
+
+    [Test]
+    public async Task HeadAsync_BlankLineThenEof_ThrowsAndPoisonsConnection()
+    {
+        await using var server = new ScriptedNntpServer(async (_, writer, _) =>
+        {
+            await writer.WriteAsync(
+                "221 0 <article@example.com>\r\n" +
+                "Header-A: 1\r\n" +
+                "\r\n");
+            throw new IOException("Close scripted connection.");
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var exception = Assert.ThrowsAsync<UsenetProtocolException>(() =>
+            client.HeadAsync("article@example.com", CancellationToken.None));
+        Assert.That(exception!.Message, Does.Contain("header terminator"));
+        Assert.That(client.IsHealthy, Is.False);
+    }
+
+    [Test]
+    public async Task HeadAsync_BlankLineThenOversizedJunk_ThrowsAndPoisonsConnection()
+    {
+        var junk = new string('x', 8192);
+        await using var server = new ScriptedNntpServer(async (_, writer, _) =>
+        {
+            await writer.WriteAsync("221 0 <article@example.com>\r\n\r\n");
+            for (var i = 0; i < 40; i++)
+            {
+                await writer.WriteAsync(junk + "\r\n");
+            }
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var exception = Assert.ThrowsAsync<UsenetProtocolException>(() =>
+            client.HeadAsync("article@example.com", CancellationToken.None));
+        Assert.That(exception!.Message, Does.Contain("256 KiB"));
+        Assert.That(client.IsHealthy, Is.False);
     }
 
     [Test]
