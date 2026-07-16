@@ -33,18 +33,24 @@ public partial class UsenetClient
 
     private async Task TryQuitBestEffortAsync()
     {
-        if (!IsHealthy || !_commandLock.TryWait())
+        Exception? backgroundException;
+        lock (_stateLock)
+        {
+            backgroundException = _backgroundException?.SourceException;
+        }
+
+        // Do not use IsHealthy: DisposeAsync marks the client disposed first,
+        // which would make IsConnected/IsHealthy false before QUIT can run.
+        if (backgroundException != null ||
+            _stream == null ||
+            _reader == null ||
+            !_commandLock.TryWait())
         {
             return;
         }
 
         try
         {
-            if (_stream == null || _reader == null)
-            {
-                return;
-            }
-
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
             try
             {
