@@ -45,7 +45,9 @@ public partial class UsenetClient
 
             var (responseCode, response) = await ExchangeSingleLineAsync(
                 ioTimeout,
-                timeout => WriteMessageIdCommandAsync("ARTICLE", segmentId, timeout)).ConfigureAwait(false);
+                segmentId,
+                static (self, id, timeout) => self.WriteMessageIdCommandAsync("ARTICLE", id, timeout))
+                .ConfigureAwait(false);
 
             // Article retrieved - head and body follow
             if (responseCode == (int)UsenetResponseType.ArticleRetrievedHeadAndBodyFollow)

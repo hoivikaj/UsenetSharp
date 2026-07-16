@@ -20,7 +20,9 @@ public partial class UsenetClient
 
             var (responseCode, response) = await ExchangeSingleLineAsync(
                 ioTimeout,
-                timeout => WriteMessageIdCommandAsync("STAT", segmentId, timeout)).ConfigureAwait(false);
+                segmentId,
+                static (self, id, timeout) => self.WriteMessageIdCommandAsync("STAT", id, timeout))
+                .ConfigureAwait(false);
 
             if (responseCode != (int)UsenetResponseType.ArticleExists)
             {

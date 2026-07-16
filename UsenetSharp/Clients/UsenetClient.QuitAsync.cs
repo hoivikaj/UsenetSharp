@@ -23,7 +23,9 @@ public partial class UsenetClient
                 operationCts.Token, _options.ReadTimeout, _timeProvider);
             var (code, line) = await ExchangeSingleLineAsync(
                 ioTimeout,
-                timeout => WriteCommandAsync(QuitCommand, timeout)).ConfigureAwait(false);
+                QuitCommand,
+                static (self, command, timeout) => self.WriteCommandAsync(command, timeout))
+                .ConfigureAwait(false);
             CleanupConnection();
             return new UsenetResponse { ResponseCode = code, ResponseMessage = line };
         }

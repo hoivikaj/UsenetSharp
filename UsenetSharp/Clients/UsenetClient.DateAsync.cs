@@ -20,7 +20,9 @@ public partial class UsenetClient
 
             var (responseCode, response) = await ExchangeSingleLineAsync(
                 ioTimeout,
-                timeout => WriteCommandAsync(DateCommand, timeout)).ConfigureAwait(false);
+                DateCommand,
+                static (self, command, timeout) => self.WriteCommandAsync(command, timeout))
+                .ConfigureAwait(false);
 
             DateTimeOffset? dateTime = null;
             if (responseCode == (int)UsenetResponseType.DateAndTime)

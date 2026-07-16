@@ -87,11 +87,14 @@ public partial class UsenetClient
                     .ConfigureAwait(false);
             }
 
-            var completions = segments
-                .Select(_ => new TaskCompletionSource<UsenetDecodedBodyResponse>(
-                    TaskCreationOptions.RunContinuationsAsynchronously))
-                .ToArray();
-            var responses = completions.Select(completion => completion.Task).ToArray();
+            var completions = new TaskCompletionSource<UsenetDecodedBodyResponse>[segments.Length];
+            var responses = new Task<UsenetDecodedBodyResponse>[segments.Length];
+            for (var index = 0; index < segments.Length; index++)
+            {
+                completions[index] = new TaskCompletionSource<UsenetDecodedBodyResponse>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+                responses[index] = completions[index].Task;
+            }
 
             pumpStarted = true;
             _ = ProcessDecodedBodyBatchAsync(

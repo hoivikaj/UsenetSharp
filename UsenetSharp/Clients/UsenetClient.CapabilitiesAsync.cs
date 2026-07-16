@@ -32,7 +32,9 @@ public partial class UsenetClient
 
             var (responseCode, response) = await ExchangeSingleLineAsync(
                 ioTimeout,
-                timeout => WriteCommandAsync(CapabilitiesCommand, timeout)).ConfigureAwait(false);
+                CapabilitiesCommand,
+                static (self, command, timeout) => self.WriteCommandAsync(command, timeout))
+                .ConfigureAwait(false);
 
             if (responseCode != (int)UsenetResponseType.CapabilityListFollows)
             {
@@ -97,7 +99,9 @@ public partial class UsenetClient
 
             var (responseCode, response) = await ExchangeSingleLineAsync(
                 ioTimeout,
-                timeout => WriteCommandAsync(ModeReaderCommand, timeout)).ConfigureAwait(false);
+                ModeReaderCommand,
+                static (self, command, timeout) => self.WriteCommandAsync(command, timeout))
+                .ConfigureAwait(false);
 
             if (responseCode != (int)UsenetResponseType.ServerReadyPostingAllowed &&
                 responseCode != (int)UsenetResponseType.ServerReadyNoPostingAllowed)

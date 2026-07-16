@@ -53,7 +53,9 @@ public partial class UsenetClient
 
             var (responseCode, response) = await ExchangeSingleLineAsync(
                 ioTimeout,
-                timeout => WriteMessageIdCommandAsync("BODY", segmentId, timeout)).ConfigureAwait(false);
+                segmentId,
+                static (self, id, timeout) => self.WriteMessageIdCommandAsync("BODY", id, timeout))
+                .ConfigureAwait(false);
 
             // Article retrieved - body follows
             if (responseCode == (int)UsenetResponseType.ArticleRetrievedBodyFollows)
@@ -139,7 +141,9 @@ public partial class UsenetClient
 
             var (responseCode, response) = await ExchangeSingleLineAsync(
                 ioTimeout,
-                timeout => WriteMessageIdCommandAsync("BODY", segmentId, timeout)).ConfigureAwait(false);
+                segmentId,
+                static (self, id, timeout) => self.WriteMessageIdCommandAsync("BODY", id, timeout))
+                .ConfigureAwait(false);
 
             if (responseCode == (int)UsenetResponseType.ArticleRetrievedBodyFollows)
             {

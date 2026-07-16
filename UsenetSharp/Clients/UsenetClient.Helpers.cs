@@ -125,13 +125,14 @@ public partial class UsenetClient
     /// I/O timeout shared by the write and the read. Any failure after command bytes
     /// may be on the wire poisons the session (RFC 3977 §3.5).
     /// </summary>
-    private async ValueTask<(int Code, string Line)> ExchangeSingleLineAsync(
+    private async ValueTask<(int Code, string Line)> ExchangeSingleLineAsync<TState>(
         CoalescedReadTimeout ioTimeout,
-        Func<CoalescedReadTimeout, ValueTask> writeCommand)
+        TState state,
+        Func<UsenetClient, TState, CoalescedReadTimeout, ValueTask> writeCommand)
     {
         try
         {
-            await writeCommand(ioTimeout).ConfigureAwait(false);
+            await writeCommand(this, state, ioTimeout).ConfigureAwait(false);
             var line = await ReadLineAsync(ioTimeout).ConfigureAwait(false)
                 ?? throw new UsenetProtocolException(
                     "The NNTP connection closed before a response was received.");

@@ -47,7 +47,9 @@ public partial class UsenetClient
 
             var (userResponseCode, userResponse) = await ExchangeSingleLineAsync(
                 ioTimeout,
-                timeout => WriteAuthInfoCommandAsync("USER", user, timeout)).ConfigureAwait(false);
+                user,
+                static (self, u, timeout) => self.WriteAuthInfoCommandAsync("USER", u, timeout))
+                .ConfigureAwait(false);
             await DrainUnexpectedMultiLineAsync(userResponseCode, operationCts.Token)
                 .ConfigureAwait(false);
 
@@ -56,7 +58,9 @@ public partial class UsenetClient
             {
                 var (passResponseCode, passResponse) = await ExchangeSingleLineAsync(
                     ioTimeout,
-                    timeout => WriteAuthInfoCommandAsync("PASS", pass, timeout)).ConfigureAwait(false);
+                    pass,
+                    static (self, p, timeout) => self.WriteAuthInfoCommandAsync("PASS", p, timeout))
+                    .ConfigureAwait(false);
                 await DrainUnexpectedMultiLineAsync(passResponseCode, operationCts.Token)
                     .ConfigureAwait(false);
 
