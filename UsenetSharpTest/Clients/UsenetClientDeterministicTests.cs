@@ -804,6 +804,12 @@ public class UsenetClientDeterministicTests
     {
         await using var server = new ScriptedNntpServer(async (command, writer, _) =>
         {
+            if (command == "QUIT")
+            {
+                await writer.WriteLineAsync("205 Connection closing");
+                return;
+            }
+
             Assert.That(command, Is.EqualTo("CAPABILITIES"));
             await writer.WriteAsync(
                 "101 Capability list follows\r\n" +
@@ -829,6 +835,12 @@ public class UsenetClientDeterministicTests
     {
         await using var server = new ScriptedNntpServer(async (command, writer, _) =>
         {
+            if (command == "QUIT")
+            {
+                await writer.WriteLineAsync("205 Connection closing");
+                return;
+            }
+
             Assert.That(command, Is.EqualTo("MODE READER"));
             await writer.WriteLineAsync("200 Reader mode enabled");
         });
