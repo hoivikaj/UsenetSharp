@@ -4,11 +4,29 @@ namespace UsenetSharp.Clients;
 
 public partial class UsenetClient
 {
+    // "AUTHINFO USER " / "AUTHINFO PASS " = 14 octets; 512 - 14 - 2 (CRLF) = 496.
+    private const int MaxAuthInfoArgumentLength = 496;
+
+    /// <summary>
+    /// Authenticates with AUTHINFO USER/PASS.
+    /// </summary>
+    /// <remarks>
+    /// Credentials sent without TLS are transmitted in plaintext. Prefer connecting
+    /// with SSL/TLS, or enable RequireTlsForAuthentication on client options.
+    /// Passwords may contain spaces (last-argument interop); usernames must not
+    /// (RFC 4643 §2.4).
+    /// </remarks>
     public async Task<UsenetResponse> AuthenticateAsync(string user, string pass, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
-        ValidateCommandValue(user, nameof(user), 497);
-        ValidateCommandValue(pass, nameof(pass), 497);
+        ValidateCommandValue(user, nameof(user), MaxAuthInfoArgumentLength);
+        ValidateCommandValue(pass, nameof(pass), MaxAuthInfoArgumentLength);
+        if (ContainsWhitespace(user))
+        {
+            throw new ArgumentException(
+                "Username must not contain whitespace (RFC 4643 §2.4).", nameof(user));
+        }
+
         await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
