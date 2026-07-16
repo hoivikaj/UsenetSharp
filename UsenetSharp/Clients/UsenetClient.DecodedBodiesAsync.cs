@@ -70,7 +70,7 @@ public partial class UsenetClient
         }
 
         var pumpStarted = false;
-        var commandsWritten = false;
+        var writeStarted = false;
         try
         {
             ThrowIfDisposed();
@@ -79,9 +79,10 @@ public partial class UsenetClient
 
             using (var operationCts = CreateOperationTokenSource(cancellationToken))
             {
+                // Bytes may reach the wire from here on (RFC 3977 §3.5).
+                writeStarted = true;
                 await WritePipelinedBodyCommandsAsync(segments, operationCts.Token)
                     .ConfigureAwait(false);
-                commandsWritten = true;
             }
 
             var completions = segments
@@ -101,7 +102,7 @@ public partial class UsenetClient
         }
         catch (Exception exception)
         {
-            if (commandsWritten)
+            if (writeStarted)
             {
                 RecordConnectionFailure(exception);
             }
