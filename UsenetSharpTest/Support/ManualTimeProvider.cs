@@ -45,6 +45,8 @@ internal sealed class ManualTimeProvider : TimeProvider
         return timer;
     }
 
+    public int CreatedTimerCount => Volatile.Read(ref _createdTimerCount);
+
     public async Task WaitForCreatedTimerCountAsync(
         int expectedCount,
         CancellationToken cancellationToken)

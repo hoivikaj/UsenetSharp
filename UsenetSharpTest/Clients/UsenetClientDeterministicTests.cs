@@ -1813,9 +1813,12 @@ public class UsenetClientDeterministicTests
     {
         var timeProvider = new ManualTimeProvider();
         var readTimeout = TimeSpan.FromSeconds(1);
+        // Exceed the raw flush threshold so the consumer observes data before cancel.
+        var firstChunk = string.Concat(Enumerable.Repeat(new string('x', 126) + "\r\n", 64));
         await using var server = new ScriptedNntpServer(async (_, writer, cancellationToken) =>
         {
-            await writer.WriteAsync("222 body follows\r\nfirst\r\n");
+            await writer.WriteAsync("222 body follows\r\n");
+            await writer.WriteAsync(firstChunk);
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
         });
         await using var client = new UsenetClient(new UsenetClientOptions
@@ -1831,11 +1834,14 @@ public class UsenetClientDeterministicTests
 
         var response = await client.BodyAsync(
             "article@example.com", completion.SetResult, callerCts.Token);
-        using var reader = new StreamReader(response.Stream!, Encoding.Latin1);
-        Assert.That(await reader.ReadLineAsync(), Is.EqualTo("first"));
-        var copyTask = reader.ReadToEndAsync();
+        var buffer = new byte[4096];
+        Assert.That(
+            await response.Stream!.ReadAsync(buffer.AsMemory()).AsTask().WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.GreaterThan(0));
+        var copyTask = response.Stream.CopyToAsync(Stream.Null);
+        var timersBeforeCancel = timeProvider.CreatedTimerCount;
         callerCts.Cancel();
-        await timeProvider.WaitForCreatedTimerCountAsync(2, waitCts.Token);
+        await timeProvider.WaitForCreatedTimerCountAsync(timersBeforeCancel + 1, waitCts.Token);
         timeProvider.Advance(readTimeout);
 
         Assert.ThrowsAsync<OperationCanceledException>(async () =>
