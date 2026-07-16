@@ -11,19 +11,22 @@ internal sealed class ScriptedNntpServer : IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Func<string, StreamWriter, CancellationToken, Task>? _commandHandler;
     private readonly Func<StreamReader, StreamWriter, CancellationToken, Task>? _connectionHandler;
+    private readonly string? _greeting;
     private readonly Task _acceptLoop;
 
     public ScriptedNntpServer(Func<string, StreamWriter, CancellationToken, Task> commandHandler)
-        : this(commandHandler, null)
+        : this(commandHandler, null, "200 scripted server ready")
     {
     }
 
     private ScriptedNntpServer(
         Func<string, StreamWriter, CancellationToken, Task>? commandHandler,
-        Func<StreamReader, StreamWriter, CancellationToken, Task>? connectionHandler)
+        Func<StreamReader, StreamWriter, CancellationToken, Task>? connectionHandler,
+        string? greeting = "200 scripted server ready")
     {
         _commandHandler = commandHandler;
         _connectionHandler = connectionHandler;
+        _greeting = greeting;
         _listener = new TcpListener(IPAddress.Loopback, 0);
         _listener.Start();
         Port = ((IPEndPoint)_listener.LocalEndpoint).Port;
@@ -34,6 +37,16 @@ internal sealed class ScriptedNntpServer : IAsyncDisposable
         Func<StreamReader, StreamWriter, CancellationToken, Task> connectionHandler)
     {
         return new ScriptedNntpServer(null, connectionHandler);
+    }
+
+    public static ScriptedNntpServer WithGreeting(
+        string greeting,
+        Func<string, StreamWriter, CancellationToken, Task>? commandHandler = null)
+    {
+        return new ScriptedNntpServer(
+            commandHandler ?? ((_, _, _) => Task.CompletedTask),
+            null,
+            greeting);
     }
 
     public int Port { get; }
@@ -65,7 +78,11 @@ internal sealed class ScriptedNntpServer : IAsyncDisposable
         await using (var writer = new StreamWriter(stream, Encoding.Latin1, leaveOpen: true)
         { AutoFlush = true, NewLine = "\r\n" })
         {
-            await writer.WriteLineAsync("200 scripted server ready");
+            if (_greeting != null)
+            {
+                await writer.WriteLineAsync(_greeting);
+            }
+
             if (_connectionHandler != null)
             {
                 await _connectionHandler(reader, writer, _cts.Token);

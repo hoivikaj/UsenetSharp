@@ -783,6 +783,18 @@ public class UsenetClientDeterministicTests
         });
     }
 
+    [TestCase("400 service unavailable", true)]
+    [TestCase("502 permission denied", false)]
+    public async Task ConnectAsync_GreetingFailure_SetsIsTransient(string greeting, bool isTransient)
+    {
+        await using var server = ScriptedNntpServer.WithGreeting(greeting);
+        await using var client = new UsenetClient();
+
+        var exception = Assert.ThrowsAsync<UsenetConnectionException>(() =>
+            client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None));
+        Assert.That(exception!.IsTransient, Is.EqualTo(isTransient));
+    }
+
     [Test]
     public async Task QuitAsync_ClosesConnectionAfter205()
     {
