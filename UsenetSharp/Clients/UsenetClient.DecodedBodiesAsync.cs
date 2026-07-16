@@ -236,6 +236,17 @@ public partial class UsenetClient
 
                 failure = bodyReadResult.Failure;
                 nextResponseIndex++;
+                var cancelledByCaller =
+                    bodyReadResult.Failure is OperationCanceledException &&
+                    callerCancellationToken.IsCancellationRequested;
+                if (cancelledByCaller &&
+                    _options.CancellationPolicy == ConnectionReleasePolicy.AbandonConnection)
+                {
+                    RecordConnectionFailure(bodyReadResult.Failure);
+                    completionResult = ArticleBodyResult.NotRetrieved;
+                    break;
+                }
+
                 var drainFailure = await TryDrainPipelinedBodiesAsync(
                         segmentIds.Count - nextResponseIndex)
                     .ConfigureAwait(false);
@@ -245,8 +256,7 @@ public partial class UsenetClient
                 }
 
                 completionResult =
-                    bodyReadResult.Failure is OperationCanceledException &&
-                    callerCancellationToken.IsCancellationRequested &&
+                    cancelledByCaller &&
                     bodyReadResult.ConnectionReusable &&
                     drainFailure == null
                         ? ArticleBodyResult.Cancelled
@@ -257,17 +267,25 @@ public partial class UsenetClient
         catch (OperationCanceledException exception) when (callerCancellationToken.IsCancellationRequested)
         {
             failure = exception;
-            var drainFailure = await TryDrainPipelinedBodiesAsync(
-                    segmentIds.Count - nextResponseIndex)
-                .ConfigureAwait(false);
-            if (drainFailure != null)
+            if (_options.CancellationPolicy == ConnectionReleasePolicy.AbandonConnection)
             {
-                RecordConnectionFailure(drainFailure);
+                RecordConnectionFailure(exception);
+                completionResult = ArticleBodyResult.NotRetrieved;
             }
+            else
+            {
+                var drainFailure = await TryDrainPipelinedBodiesAsync(
+                        segmentIds.Count - nextResponseIndex)
+                    .ConfigureAwait(false);
+                if (drainFailure != null)
+                {
+                    RecordConnectionFailure(drainFailure);
+                }
 
-            completionResult = drainFailure == null
-                ? ArticleBodyResult.Cancelled
-                : ArticleBodyResult.NotRetrieved;
+                completionResult = drainFailure == null
+                    ? ArticleBodyResult.Cancelled
+                    : ArticleBodyResult.NotRetrieved;
+            }
         }
         catch (Exception exception)
         {

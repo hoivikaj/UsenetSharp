@@ -421,11 +421,19 @@ public partial class UsenetClient
         catch (OperationCanceledException e) when (callerCancellationToken.IsCancellationRequested)
         {
             failure = e;
-            var drainFailure = await TryDrainBodyAsync().ConfigureAwait(false);
-            if (drainFailure != null)
+            if (_options.CancellationPolicy == ConnectionReleasePolicy.AbandonConnection)
             {
                 connectionReusable = false;
-                RecordConnectionFailure(drainFailure);
+                RecordConnectionFailure(e);
+            }
+            else
+            {
+                var drainFailure = await TryDrainBodyAsync().ConfigureAwait(false);
+                if (drainFailure != null)
+                {
+                    connectionReusable = false;
+                    RecordConnectionFailure(drainFailure);
+                }
             }
         }
         catch (Exception e)
@@ -702,10 +710,17 @@ public partial class UsenetClient
         catch (OperationCanceledException e) when (callerCancellationToken.IsCancellationRequested)
         {
             failure = e;
-            var drainFailure = await TryDrainBodyAsync().ConfigureAwait(false);
-            if (drainFailure != null)
+            if (_options.CancellationPolicy == ConnectionReleasePolicy.AbandonConnection)
             {
-                RecordConnectionFailure(drainFailure);
+                RecordConnectionFailure(e);
+            }
+            else
+            {
+                var drainFailure = await TryDrainBodyAsync().ConfigureAwait(false);
+                if (drainFailure != null)
+                {
+                    RecordConnectionFailure(drainFailure);
+                }
             }
         }
         catch (Exception e)

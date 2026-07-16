@@ -585,6 +585,125 @@ public class UsenetClientDeterministicTests
     }
 
     [Test]
+    public async Task BodyAsync_AbandonConnection_CancelsWithoutDrainAndPoisons()
+    {
+        var firstLineSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = new ScriptedNntpServer(async (_, writer, cancellationToken) =>
+        {
+            await writer.WriteAsync("222 body follows\r\nfirst\r\n");
+            firstLineSent.SetResult();
+            // Remainder intentionally never arrives: abandon must not wait to drain it.
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        });
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            ReadTimeout = TimeSpan.FromSeconds(5),
+            CancellationPolicy = ConnectionReleasePolicy.AbandonConnection
+        });
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+        using var cts = new CancellationTokenSource();
+        var completion = new TaskCompletionSource<ArticleBodyResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var response = await client.BodyAsync("article@example.com", completion.SetResult, cts.Token);
+        var copyTask = response.Stream!.CopyToAsync(Stream.Null);
+        await firstLineSent.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await Task.Delay(50);
+        var cancelledAt = Environment.TickCount64;
+        cts.Cancel();
+
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await copyTask);
+        Assert.That(await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.EqualTo(ArticleBodyResult.NotRetrieved));
+        Assert.That(Environment.TickCount64 - cancelledAt, Is.LessThan(100));
+        Assert.That(client.IsHealthy, Is.False);
+        Assert.ThrowsAsync<UsenetProtocolException>(() =>
+            client.DateAsync(CancellationToken.None));
+    }
+
+    [Test]
+    public async Task DecodedBodyAsync_AbandonConnection_CancelsWithoutDrainAndPoisons()
+    {
+        var firstLineSent = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = new ScriptedNntpServer(async (_, writer, cancellationToken) =>
+        {
+            await writer.WriteAsync(
+                "222 body follows\r\n" +
+                "=ybegin line=128 size=2 name=cancel.bin\r\n" +
+                "k\r\n");
+            firstLineSent.SetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        });
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            ReadTimeout = TimeSpan.FromSeconds(5),
+            CancellationPolicy = ConnectionReleasePolicy.AbandonConnection
+        });
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+        using var cts = new CancellationTokenSource();
+        var completion = new TaskCompletionSource<ArticleBodyResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var response = await client.DecodedBodyAsync(
+            "article@example.com", completion.SetResult, cts.Token);
+        var copyTask = response.Stream!.CopyToAsync(Stream.Null);
+        await firstLineSent.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var cancelledAt = Environment.TickCount64;
+        cts.Cancel();
+
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await copyTask);
+        Assert.That(await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.EqualTo(ArticleBodyResult.NotRetrieved));
+        Assert.That(Environment.TickCount64 - cancelledAt, Is.LessThan(100));
+        Assert.That(client.IsHealthy, Is.False);
+    }
+
+    [Test]
+    public async Task DecodedBodiesAsync_AbandonConnection_CancelsBatchWithoutDrain()
+    {
+        var partialBodySent = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = ScriptedNntpServer.StartConnectionScript(
+            async (reader, writer, cancellationToken) =>
+            {
+                _ = await reader.ReadLineAsync(cancellationToken);
+                _ = await reader.ReadLineAsync(cancellationToken);
+                await writer.WriteAsync(
+                    "222 body follows\r\n" +
+                    "=ybegin line=128 size=2 name=first.bin\r\n" +
+                    "k\r\n");
+                partialBodySent.SetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            });
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            ReadTimeout = TimeSpan.FromSeconds(5),
+            CancellationPolicy = ConnectionReleasePolicy.AbandonConnection
+        });
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+        using var cts = new CancellationTokenSource();
+        var completion = new TaskCompletionSource<ArticleBodyResult>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var batch = await client.DecodedBodiesAsync(
+            new SegmentId[] { "first@example.com", "second@example.com" },
+            result => completion.TrySetResult(result),
+            cts.Token);
+        var first = await batch.Responses[0];
+        var copyTask = first.Stream!.CopyToAsync(Stream.Null);
+        await partialBodySent.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var cancelledAt = Environment.TickCount64;
+        cts.Cancel();
+
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await copyTask);
+        Assert.That(await completion.Task.WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.EqualTo(ArticleBodyResult.NotRetrieved));
+        Assert.That(Environment.TickCount64 - cancelledAt, Is.LessThan(100));
+        Assert.That(client.IsHealthy, Is.False);
+        Assert.ThrowsAsync<OperationCanceledException>(async () => await batch.Responses[1]);
+    }
+
+    [Test]
     public async Task DecodedBodiesAsync_SendsCommandsAheadAndStreamsResponsesInOrder()
     {
         var expected = new[]

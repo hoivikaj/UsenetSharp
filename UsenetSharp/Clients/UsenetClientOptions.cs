@@ -39,6 +39,19 @@ public sealed record UsenetClientOptions
     public long AbandonedBodyDrainLimit { get; init; } = 1024 * 1024;
 
     /// <summary>
+    /// Gets how cancelled body transfers release the connection.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ConnectionReleasePolicy.DrainToReuse"/> (default) drains remaining
+    /// protocol data so the connection can be reused — preferred for queue downloads
+    /// where cancellation is rare. <see cref="ConnectionReleasePolicy.AbandonConnection"/>
+    /// poisons immediately so the owner reconnects — preferred for seek-heavy WebDAV
+    /// streaming where drain latency dominates.
+    /// </remarks>
+    public ConnectionReleasePolicy CancellationPolicy { get; init; } =
+        ConnectionReleasePolicy.DrainToReuse;
+
+    /// <summary>
     /// Gets the maximum number of BODY commands that may be pipelined in one batch.
     /// </summary>
     /// <remarks>

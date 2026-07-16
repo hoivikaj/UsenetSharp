@@ -9,6 +9,7 @@ streaming yEnc decoding.
 - TLS with platform certificate validation
 - Incremental, allocation-conscious yEnc decoding through RapidYencSharp
 - Read-only, non-seekable response streams with cancellation support
+- Configurable cancellation policy: drain-to-reuse (default) or abandon-and-reconnect for seek-heavy workloads
 - Serialized commands per connection; use multiple clients for parallel downloads
 
 ## Installation
