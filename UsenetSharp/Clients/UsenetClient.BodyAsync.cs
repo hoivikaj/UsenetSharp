@@ -215,6 +215,7 @@ public partial class UsenetClient
             var headersRead = false;
             var isMultipart = false;
             long drainedBytes = 0;
+            long skippedBytes = 0;
             var ybeginLength = 0;
             RapidYencDecoderState? decoderState = RapidYencDecoderState.RYDEC_STATE_CRLF;
             uint decodedCrc32 = 0;
@@ -293,6 +294,13 @@ public partial class UsenetClient
 
                 if (dataEnded)
                 {
+                    skippedBytes += lineBytes.Length + 2;
+                    if (skippedBytes > _options.AbandonedBodyDrainLimit)
+                    {
+                        throw new UsenetProtocolException(
+                            "The NNTP body contained more non-yEnc data than the configured drain limit.");
+                    }
+
                     continue;
                 }
 
@@ -305,6 +313,15 @@ public partial class UsenetClient
                             ybeginBuffer = ArrayPool<byte>.Shared.Rent(lineBytes.Length);
                             lineBytes.Span.CopyTo(ybeginBuffer);
                             ybeginLength = lineBytes.Length;
+                        }
+                        else
+                        {
+                            skippedBytes += lineBytes.Length + 2;
+                            if (skippedBytes > _options.AbandonedBodyDrainLimit)
+                            {
+                                throw new UsenetProtocolException(
+                                    "The NNTP body contained more non-yEnc data than the configured drain limit.");
+                            }
                         }
 
                         continue;
