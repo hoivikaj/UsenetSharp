@@ -6,6 +6,10 @@ namespace UsenetSharp.Models;
 public partial record UsenetArticleHeader
 {
     public required Dictionary<string, string> Headers { get; init; }
+
+    /// <summary>All header fields in wire order, including duplicates.</summary>
+    public IReadOnlyList<KeyValuePair<string, string>> AllHeaders { get; init; } = [];
+
     private DateTimeOffset? _date;
 
     // Common header accessors for convenience

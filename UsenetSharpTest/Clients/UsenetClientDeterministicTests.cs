@@ -800,6 +800,33 @@ public class UsenetClientDeterministicTests
     }
 
     [Test]
+    public async Task HeadAsync_DuplicateHeaders_PreservesAllInOrderWithFirstWins()
+    {
+        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
+        {
+            if (command == "QUIT")
+            {
+                await writer.WriteLineAsync("205 Connection closing");
+                return;
+            }
+
+            await writer.WriteAsync(
+                "221 0 <article@example.com>\r\n" +
+                "X-Trace: first\r\n" +
+                "X-Trace: second\r\n" +
+                ".\r\n");
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var head = await client.HeadAsync("article@example.com", CancellationToken.None);
+        Assert.That(head.ArticleHeaders!.Headers["X-Trace"], Is.EqualTo("first"));
+        Assert.That(head.ArticleHeaders.AllHeaders.Count, Is.EqualTo(2));
+        Assert.That(head.ArticleHeaders.AllHeaders[0].Value, Is.EqualTo("first"));
+        Assert.That(head.ArticleHeaders.AllHeaders[1].Value, Is.EqualTo("second"));
+    }
+
+    [Test]
     public async Task CapabilitiesAsync_ParsesLabelsAndDotUnstuffs()
     {
         await using var server = new ScriptedNntpServer(async (command, writer, _) =>

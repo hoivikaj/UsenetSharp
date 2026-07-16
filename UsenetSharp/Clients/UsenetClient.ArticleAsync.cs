@@ -109,10 +109,23 @@ public partial class UsenetClient
         bool allowDotTerminator = false)
     {
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var allHeaders = new List<KeyValuePair<string, string>>();
         string? currentHeaderName = null;
         var currentHeaderValue = new StringBuilder();
         var totalHeaderBytes = 0;
         var headerCount = 0;
+
+        void CommitCurrentHeader()
+        {
+            if (currentHeaderName == null)
+            {
+                return;
+            }
+
+            var value = currentHeaderValue.ToString().Trim();
+            headers.TryAdd(currentHeaderName, value);
+            allHeaders.Add(new KeyValuePair<string, string>(currentHeaderName, value));
+        }
 
         while (true)
         {
@@ -128,11 +141,7 @@ public partial class UsenetClient
             {
                 if (allowDotTerminator)
                 {
-                    if (currentHeaderName != null)
-                    {
-                        headers[currentHeaderName] = currentHeaderValue.ToString().Trim();
-                    }
-
+                    CommitCurrentHeader();
                     break;
                 }
 
@@ -157,20 +166,12 @@ public partial class UsenetClient
                         }
                     }
 
-                    if (currentHeaderName != null)
-                    {
-                        headers[currentHeaderName] = currentHeaderValue.ToString().Trim();
-                    }
-
+                    CommitCurrentHeader();
                     break;
                 }
 
                 // ARTICLE mode: blank line legitimately ends the header block.
-                if (currentHeaderName != null)
-                {
-                    headers[currentHeaderName] = currentHeaderValue.ToString().Trim();
-                }
-
+                CommitCurrentHeader();
                 break;
             }
 
@@ -193,10 +194,7 @@ public partial class UsenetClient
             else
             {
                 // Save the previous header if any
-                if (currentHeaderName != null)
-                {
-                    headers[currentHeaderName] = currentHeaderValue.ToString().Trim();
-                }
+                CommitCurrentHeader();
 
                 // Parse new header: "Name: Value"
                 var colonIndex = line.IndexOf(':');
@@ -217,12 +215,18 @@ public partial class UsenetClient
                         currentHeaderValue.Append(line.Substring(colonIndex + 1).Trim());
                     }
                 }
+                else
+                {
+                    currentHeaderName = null;
+                    currentHeaderValue.Clear();
+                }
             }
         }
 
         return new UsenetArticleHeader
         {
-            Headers = headers
+            Headers = headers,
+            AllHeaders = allHeaders
         };
     }
 }
