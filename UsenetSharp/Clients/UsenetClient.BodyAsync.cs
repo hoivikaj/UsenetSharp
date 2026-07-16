@@ -13,6 +13,7 @@ namespace UsenetSharp.Clients;
 public partial class UsenetClient
 {
     private const int DecodedBodyChunkSize = 64 * 1024;
+    private const int RawBodyFlushThreshold = 8 * 1024;
 
     public Task<UsenetBodyResponse> BodyAsync(SegmentId segmentId, CancellationToken cancellationToken)
     {
@@ -617,6 +618,7 @@ public partial class UsenetClient
 
             var shouldWrite = true;
             long drainedBytes = 0;
+            var unflushed = 0;
             var cancellationToken = operationCts.Token;
             using var readTimeout = new CoalescedReadTimeout(
                 cancellationToken, _options.ReadTimeout, _timeProvider);
@@ -673,8 +675,23 @@ public partial class UsenetClient
                 destination[line.Length] = (byte)'\r';
                 destination[line.Length + 1] = (byte)'\n';
                 writer.Advance(line.Length + 2);
+                unflushed += line.Length + 2;
 
-                // Each line must become visible promptly so incremental readers can make progress.
+                // Batch flushes (~8 KiB) to cut per-line FlushAsync overhead while keeping
+                // first-byte latency acceptable for small-header readers.
+                if (unflushed >= RawBodyFlushThreshold)
+                {
+                    var result = await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
+                    unflushed = 0;
+                    if (result.IsCompleted || result.IsCanceled)
+                    {
+                        shouldWrite = false;
+                    }
+                }
+            }
+
+            if (shouldWrite && unflushed > 0)
+            {
                 var result = await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
                 if (result.IsCompleted || result.IsCanceled)
                 {

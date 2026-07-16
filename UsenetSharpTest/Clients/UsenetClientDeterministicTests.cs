@@ -253,6 +253,65 @@ public class UsenetClientDeterministicTests
     }
 
     [Test]
+    public async Task BodyAsync_FlushThreshold_BuffersBelowThresholdUntilTerminator()
+    {
+        var releaseRemainder = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // ~4 KiB of body lines — below the 8 KiB flush threshold.
+        var partialLine = new string('a', 126);
+        var partialBody = string.Concat(Enumerable.Repeat(partialLine + "\r\n", 32)); // 32 × 128 = 4096
+        await using var server = new ScriptedNntpServer(async (_, writer, _) =>
+        {
+            await writer.WriteAsync("222 body follows\r\n");
+            await writer.WriteAsync(partialBody);
+            await releaseRemainder.Task;
+            await writer.WriteAsync(".\r\n");
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var response = await client.BodyAsync("article@example.com", CancellationToken.None);
+        var buffer = new byte[1];
+        using var readCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
+        Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await response.Stream!.ReadAsync(buffer.AsMemory(), readCts.Token));
+
+        releaseRemainder.SetResult();
+        using var body = new MemoryStream();
+        await response.Stream!.CopyToAsync(body);
+        Assert.That(body.Length, Is.EqualTo(partialBody.Length));
+    }
+
+    [Test]
+    public async Task BodyAsync_FlushThreshold_StreamsDataOnceThresholdReached()
+    {
+        var releaseTerminator = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // ~9 KiB of body lines — above the 8 KiB flush threshold.
+        var line = new string('b', 126);
+        var bodyAboveThreshold = string.Concat(Enumerable.Repeat(line + "\r\n", 72)); // 72 × 128 = 9216
+        await using var server = new ScriptedNntpServer(async (_, writer, _) =>
+        {
+            await writer.WriteAsync("222 body follows\r\n");
+            await writer.WriteAsync(bodyAboveThreshold);
+            await releaseTerminator.Task;
+            await writer.WriteAsync(".\r\n");
+        });
+        await using var client = new UsenetClient();
+        await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
+
+        var response = await client.BodyAsync("article@example.com", CancellationToken.None);
+        var firstChunk = new byte[4096];
+        var read = await response.Stream!.ReadAsync(firstChunk.AsMemory())
+            .AsTask()
+            .WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.That(read, Is.GreaterThan(0));
+
+        releaseTerminator.SetResult();
+        using var remainder = new MemoryStream();
+        await response.Stream.CopyToAsync(remainder);
+        Assert.That(read + remainder.Length, Is.EqualTo(bodyAboveThreshold.Length));
+    }
+
+    [Test]
     public async Task DecodedBodyAsync_DecodesLargeBodyAndProvidesHeaders()
     {
         var expected = Enumerable.Range(0, 180_000)
@@ -1407,6 +1466,9 @@ public class UsenetClientDeterministicTests
             .Select(_ => new TaskCompletionSource<string>(
                 TaskCreationOptions.RunContinuationsAsynchronously))
             .ToArray();
+        // Each progressive chunk must reach the raw flush threshold so the consumer
+        // observes data before the next read-timeout window.
+        var progressChunk = string.Concat(Enumerable.Repeat(new string('x', 126) + "\r\n", 64));
         await using var server = new ScriptedNntpServer(async (_, writer, cancellationToken) =>
         {
             await writer.WriteAsync("222 body follows\r\n");
@@ -1423,20 +1485,30 @@ public class UsenetClientDeterministicTests
 
         var response = await client.BodyAsync(
             "article@example.com", CancellationToken.None);
-        using var reader = new StreamReader(response.Stream!, Encoding.Latin1);
+        var buffer = new byte[progressChunk.Length];
         for (var index = 0; index < 3; index++)
         {
             timeProvider.Advance(TimeSpan.FromMilliseconds(750));
-            bodyChunks[index].SetResult($"line-{index}\r\n");
+            bodyChunks[index].SetResult(progressChunk);
+            var totalRead = 0;
+            while (totalRead < progressChunk.Length)
+            {
+                var read = await response.Stream!.ReadAsync(buffer.AsMemory(totalRead))
+                    .AsTask()
+                    .WaitAsync(TimeSpan.FromSeconds(2));
+                Assert.That(read, Is.GreaterThan(0));
+                totalRead += read;
+            }
+
             Assert.That(
-                await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(2)),
-                Is.EqualTo($"line-{index}"));
+                Encoding.Latin1.GetString(buffer.AsSpan(0, totalRead)),
+                Is.EqualTo(progressChunk));
         }
 
         bodyChunks[3].SetResult(".\r\n");
         Assert.That(
-            await reader.ReadLineAsync().WaitAsync(TimeSpan.FromSeconds(2)),
-            Is.Null);
+            await response.Stream!.ReadAsync(buffer.AsMemory()).AsTask().WaitAsync(TimeSpan.FromSeconds(2)),
+            Is.EqualTo(0));
     }
 
     [Test]
@@ -1525,11 +1597,15 @@ public class UsenetClientDeterministicTests
     public async Task BodyAsync_AbandonedBodyBeyondDrainLimitReportsNotRetrieved()
     {
         var continueBody = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Post-dispose payload exceeds the 8 KiB flush threshold so the pump discovers
+        // the completed reader, switches to drain mode, then overflows the drain limit.
+        var postDisposeBurst = string.Concat(Enumerable.Repeat(new string('x', 126) + "\r\n", 70));
         await using var server = new ScriptedNntpServer(async (_, writer, _) =>
         {
             await writer.WriteAsync("222 body follows\r\ninitial\r\n");
             await continueBody.Task;
-            await writer.WriteAsync("after-dispose\r\n12345\r\n.\r\n");
+            await writer.WriteAsync(postDisposeBurst);
+            await writer.WriteAsync("overflow-after-drain-switch\r\n.\r\n");
         });
         await using var client = new UsenetClient(new UsenetClientOptions
         {
