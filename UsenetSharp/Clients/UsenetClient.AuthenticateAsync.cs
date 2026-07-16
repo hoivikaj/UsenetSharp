@@ -1,3 +1,4 @@
+using System.Net.Security;
 using UsenetSharp.Models;
 
 namespace UsenetSharp.Clients;
@@ -12,7 +13,7 @@ public partial class UsenetClient
     /// </summary>
     /// <remarks>
     /// Credentials sent without TLS are transmitted in plaintext. Prefer connecting
-    /// with SSL/TLS, or enable RequireTlsForAuthentication on client options.
+    /// with SSL/TLS, or enable <see cref="UsenetClientOptions.RequireTlsForAuthentication"/>.
     /// Passwords may contain spaces (last-argument interop); usernames must not
     /// (RFC 4643 §2.4).
     /// </remarks>
@@ -33,6 +34,13 @@ public partial class UsenetClient
             ThrowIfDisposed();
             ThrowIfUnhealthy();
             ThrowIfNotConnected();
+            if (_options.RequireTlsForAuthentication && _stream is not SslStream)
+            {
+                throw new InvalidOperationException(
+                    "Refusing to send credentials over a plaintext connection. " +
+                    "Connect with useSsl: true or disable RequireTlsForAuthentication.");
+            }
+
             using var operationCts = CreateOperationTokenSource(cancellationToken);
 
             var (userResponseCode, userResponse) = await ExchangeSingleLineAsync(
