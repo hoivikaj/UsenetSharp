@@ -98,6 +98,12 @@ internal sealed class ScriptedNntpServer : IAsyncDisposable
                 }
 
                 Commands.Enqueue(command);
+                if (command == "QUIT")
+                {
+                    await writer.WriteLineAsync("205 Connection closing");
+                    return;
+                }
+
                 await _commandHandler!(command, writer, _cts.Token);
             }
         }

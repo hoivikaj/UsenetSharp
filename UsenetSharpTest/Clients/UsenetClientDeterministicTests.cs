@@ -939,20 +939,12 @@ public class UsenetClientDeterministicTests
     [Test]
     public async Task DisposeAsync_SendsBestEffortQuitWhenHealthy()
     {
-        var quitReceived = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        await using var server = new ScriptedNntpServer(async (command, writer, _) =>
-        {
-            if (command == "QUIT")
-            {
-                quitReceived.TrySetResult();
-                await writer.WriteLineAsync("205 Connection closing");
-            }
-        });
+        await using var server = new ScriptedNntpServer((_, _, _) => Task.CompletedTask);
         var client = new UsenetClient();
         await client.ConnectAsync("127.0.0.1", server.Port, false, CancellationToken.None);
         await client.DisposeAsync();
 
-        await quitReceived.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.That(server.Commands, Does.Contain("QUIT"));
     }
 
     [Test]

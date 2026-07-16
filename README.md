@@ -149,14 +149,14 @@ await yenc.CopyToAsync(destination, cancellationToken);
 ```
 
 `DecodedBodyAsync` decodes yEnc data directly as raw chunks. CRC32 validation is
-optional and disabled by default for backward compatibility. Enable it when
-constructing the client to require a valid `crc32` trailer for single-part
-articles or `pcrc32` for multipart articles:
+optional and disabled by default for backward compatibility. Use
+`YencCrcValidationMode` to validate when a trailer CRC is present
+(`WhenPresent`) or to require one (`Require`):
 
 ```csharp
 var client = new UsenetClient(new UsenetClientOptions
 {
-    ValidateDecodedBodyCrc32 = true
+    CrcValidation = YencCrcValidationMode.Require
 });
 
 var response = await client.DecodedBodyAsync(segmentId, cancellationToken);
@@ -166,8 +166,9 @@ if (response.Stream is not null)
 }
 ```
 
-When validation is enabled, a missing, malformed, or mismatched CRC32 value
-fails the decoded response stream with `InvalidDataException`.
+With `Require`, a missing, malformed, or mismatched CRC32 value fails the
+decoded response stream with `InvalidDataException`. `WhenPresent` tolerates
+trailers without a CRC field.
 
 ### Connection and stream lifecycle
 
