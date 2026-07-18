@@ -1,5 +1,38 @@
 # Changelog
 
+## [3.0.0](https://github.com/nzbdav/UsenetSharp/compare/v2.0.2...v3.0.0) (2026-07-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **nntp:** SegmentIds longer than 248 characters (excluding angle brackets) are now rejected before any command is sent.
+
+### Features
+
+* **client:** add CancellationPolicy for seek-friendly abandon ([acc3963](https://github.com/nzbdav/UsenetSharp/commit/acc3963812e8d3f7162dbad26c7f2127db2dc8be)), closes [#52](https://github.com/nzbdav/UsenetSharp/issues/52)
+* **client:** add yEnc header probe API (YencHeadersAsync) ([add7d11](https://github.com/nzbdav/UsenetSharp/commit/add7d1110a6b0cc0fa9221a84ea1af069493ad6f)), closes [#60](https://github.com/nzbdav/UsenetSharp/issues/60)
+* **client:** tune TCP keepalive for pooled idle connections ([f73f7fb](https://github.com/nzbdav/UsenetSharp/commit/f73f7fb465317597c711ac0bf36ddd9074afe636)), closes [#51](https://github.com/nzbdav/UsenetSharp/issues/51)
+
+
+### Bug Fixes
+
+* **client:** adapt cancel-drain timeout test for batched flushes ([5cfcd02](https://github.com/nzbdav/UsenetSharp/commit/5cfcd022e158747f54bc933ff4a67e57f1ccc970))
+* **client:** batch raw body pipe flushes ([bc0f6e2](https://github.com/nzbdav/UsenetSharp/commit/bc0f6e2900e7a36e3f6252401268655c3f2f3cd5)), closes [#53](https://github.com/nzbdav/UsenetSharp/issues/53)
+* **client:** coalesce per-command I/O timeouts ([b0a45c0](https://github.com/nzbdav/UsenetSharp/commit/b0a45c09ff4122bb780ebac351b9cb996db92af2)), closes [#54](https://github.com/nzbdav/UsenetSharp/issues/54)
+* **client:** read connection health without state lock ([aacf1ab](https://github.com/nzbdav/UsenetSharp/commit/aacf1abe204bb2a14bf4ebd2d9216602bc6f9b9a)), closes [#59](https://github.com/nzbdav/UsenetSharp/issues/59)
+* **client:** remove command setup closure and LINQ allocations ([db47bf8](https://github.com/nzbdav/UsenetSharp/commit/db47bf876c0295b2a1ca104b4626e91cba43fd3b)), closes [#58](https://github.com/nzbdav/UsenetSharp/issues/58)
+* **client:** reuse decode buffer and timeout across batch bodies ([b221719](https://github.com/nzbdav/UsenetSharp/commit/b2217197cc8b57ef55ba52cfc90ee95b9ff2b9eb)), closes [#55](https://github.com/nzbdav/UsenetSharp/issues/55)
+* **client:** share PipeOptions and align segment size ([938e93f](https://github.com/nzbdav/UsenetSharp/commit/938e93f6598fbf1bea9901bd3aeedffd78dade9a)), closes [#56](https://github.com/nzbdav/UsenetSharp/issues/56)
+* **client:** write AUTHINFO without retained StreamWriter ([8f52987](https://github.com/nzbdav/UsenetSharp/commit/8f52987569f04b2645b150595fd73e781b113829)), closes [#57](https://github.com/nzbdav/UsenetSharp/issues/57)
+* **deps:** Bump the github-actions group with 3 updates ([#50](https://github.com/nzbdav/UsenetSharp/issues/50)) ([5c35f05](https://github.com/nzbdav/UsenetSharp/commit/5c35f0502fbabcefeac0ae6cacc56ffb02bf4a33))
+* **nntp:** address protocol compliance audit findings ([#43](https://github.com/nzbdav/UsenetSharp/issues/43)) ([9c642d3](https://github.com/nzbdav/UsenetSharp/commit/9c642d39ba9fb2b492ced1c4b1a7eca3d38ded89))
+* **nntp:** address second-pass audit residuals (S2-01…S2-04) ([#49](https://github.com/nzbdav/UsenetSharp/issues/49)) ([895a693](https://github.com/nzbdav/UsenetSharp/commit/895a6937e1a8324493a780b2a69e356fd6c7eadf)), closes [#48](https://github.com/nzbdav/UsenetSharp/issues/48)
+
+
+### Performance Improvements
+
+* implement third-pass audit findings (P-01…P-10) ([8c49a05](https://github.com/nzbdav/UsenetSharp/commit/8c49a05a917bb0214a0cdabddb0261fc8e7712da))
+
 ## [2.0.2](https://github.com/nzbdav/UsenetSharp/compare/v2.0.1...v2.0.2) (2026-07-11)
 
 
