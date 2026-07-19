@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.0](https://github.com/nzbdav/UsenetSharp/compare/v3.0.0...v3.1.0) (2026-07-19)
+
+
+### Features
+
+* **client:** add pipelined STAT existence checks (StatPipelinedAsync) ([e9c27fb](https://github.com/nzbdav/UsenetSharp/commit/e9c27fb00f65c6c66f0e70b6c8d4c5543bca83e3))
+
 ## [3.0.0](https://github.com/nzbdav/UsenetSharp/compare/v2.0.2...v3.0.0) (2026-07-16)
 
 
