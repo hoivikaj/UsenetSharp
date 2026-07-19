@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.1](https://github.com/nzbdav/UsenetSharp/compare/v3.1.0...v3.1.1) (2026-07-19)
+
+
+### Bug Fixes
+
+* **client:** prevent CoalescedReadTimeout timer callback use-after-dispose under AUTH storms ([#64](https://github.com/nzbdav/UsenetSharp/issues/64)) ([b48aabf](https://github.com/nzbdav/UsenetSharp/commit/b48aabfc6e8adedcaa1a373fb30aeef7ebc8dbef))
+
 ## [3.1.0](https://github.com/nzbdav/UsenetSharp/compare/v3.0.0...v3.1.0) (2026-07-19)
 
 
