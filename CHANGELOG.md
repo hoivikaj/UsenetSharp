@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.2](https://github.com/nzbdav/UsenetSharp/compare/v3.1.1...v3.1.2) (2026-07-20)
+
+
+### Bug Fixes
+
+* **deps:** consume RapidYencSharp musl natives for Alpine ([#67](https://github.com/nzbdav/UsenetSharp/issues/67)) ([4af5fa3](https://github.com/nzbdav/UsenetSharp/commit/4af5fa33ab61b1536b07ea8c81c23b7cb8afee66))
+
 ## [3.1.1](https://github.com/nzbdav/UsenetSharp/compare/v3.1.0...v3.1.1) (2026-07-19)
 
 

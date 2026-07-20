@@ -7,7 +7,7 @@
 
         <!-- Package Information -->
         <PackageId>NzbDav.UsenetSharp</PackageId>
-        <Version>3.1.1</Version>
+        <Version>3.1.2</Version>
         <Authors>UsenetSharp Contributors</Authors>
         <Title>UsenetSharp</Title>
         <Description>Asynchronous, read-only NNTP access and streaming yEnc decoding for .NET 10.</Description>
