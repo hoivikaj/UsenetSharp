@@ -15,9 +15,9 @@
       },
       "NzbDav.RapidYencSharp": {
         "type": "Direct",
-        "requested": "[2.0.3, )",
-        "resolved": "2.0.3",
-        "contentHash": "OWRiwWIBmzKLZl8YB8FxhC5BXiJcPA4NNBW0ptnw3klx2bTuZsypaY9IItaA3GzWzBBfbRWBxZtTyKFi1D5OJg=="
+        "requested": "[3.0.0, )",
+        "resolved": "3.0.0",
+        "contentHash": "HwhN0XG2ijiTM6VEhQ8PGNfd9f0qIbKE1amJf1o37+Ad6smBsukefHC0O4ML4XpVgoibMWkn9S64G5VrU3HQdA=="
       },
       "Microsoft.Build.Tasks.Git": {
         "type": "Transitive",
