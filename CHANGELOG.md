@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.1.3](https://github.com/nzbdav/UsenetSharp/compare/v3.1.2...v3.1.3) (2026-07-20)
+
+
+### Bug Fixes
+
+* **deps:** bump NzbDav.RapidYencSharp to 3.0.0 ([#70](https://github.com/nzbdav/UsenetSharp/issues/70)) ([fdf4757](https://github.com/nzbdav/UsenetSharp/commit/fdf4757ec08dbadf3b6b729ac87f1b25fede86af))
+
 ## [3.1.2](https://github.com/nzbdav/UsenetSharp/compare/v3.1.1...v3.1.2) (2026-07-20)
 
 
