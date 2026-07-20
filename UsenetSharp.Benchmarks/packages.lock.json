@@ -137,8 +137,8 @@
       },
       "NzbDav.RapidYencSharp": {
         "type": "Transitive",
-        "resolved": "2.0.2",
-        "contentHash": "NKPpFwFfKbm0gMTRRjkOCXr6njyulZw7yvVtFFB6FYpiRUfNRwI96ANTVyqB09Z86IiIHF9LVSLtAfkFM/sr7Q=="
+        "resolved": "2.0.3",
+        "contentHash": "OWRiwWIBmzKLZl8YB8FxhC5BXiJcPA4NNBW0ptnw3klx2bTuZsypaY9IItaA3GzWzBBfbRWBxZtTyKFi1D5OJg=="
       },
       "Perfolizer": {
         "type": "Transitive",
@@ -174,7 +174,7 @@
       "NzbDav.UsenetSharp": {
         "type": "Project",
         "dependencies": {
-          "NzbDav.RapidYencSharp": "[2.0.2, )"
+          "NzbDav.RapidYencSharp": "[2.0.3, )"
         }
       }
     }
