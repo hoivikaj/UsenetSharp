@@ -1,5 +1,6 @@
 using System.Net.Security;
 using System.Net.Sockets;
+using System.Security.Cryptography.X509Certificates;
 using UsenetSharp.Exceptions;
 using UsenetSharp.Models;
 
@@ -51,7 +52,12 @@ public partial class UsenetClient
                     TargetHost = host,
                     EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12 |
                                           System.Security.Authentication.SslProtocols.Tls13,
-                    CertificateRevocationCheckMode = _options.CertificateRevocationCheckMode
+                    CertificateRevocationCheckMode = _options.SkipTlsVerification
+                        ? X509RevocationMode.NoCheck
+                        : _options.CertificateRevocationCheckMode,
+                    RemoteCertificateValidationCallback = _options.SkipTlsVerification
+                        ? static (_, _, _, _) => true
+                        : null
                 }, operationCts.Token).ConfigureAwait(false);
                 _stream = sslStream;
             }

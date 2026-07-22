@@ -104,8 +104,20 @@ public sealed record UsenetClientOptions
     /// <remarks>
     /// Defaults to <see cref="X509RevocationMode.NoCheck"/> to avoid revocation lookup
     /// latency during frequent streaming reconnects. Platform certificate chain and
-    /// hostname validation remain enabled for every mode.
+    /// hostname validation remain enabled unless <see cref="SkipTlsVerification"/> is set.
     /// </remarks>
     public X509RevocationMode CertificateRevocationCheckMode { get; init; } =
         X509RevocationMode.NoCheck;
+
+    /// <summary>
+    /// Gets whether TLS certificate chain and hostname validation is bypassed.
+    /// </summary>
+    /// <remarks>
+    /// Defaults to <see langword="false"/>. Enable only for a specific trusted
+    /// server with a broken certificate. This applies to every host connected by
+    /// this client instance and also disables certificate revocation lookup. TLS
+    /// traffic remains encrypted, but a network attacker can impersonate the
+    /// server and read NNTP credentials.
+    /// </remarks>
+    public bool SkipTlsVerification { get; init; }
 }

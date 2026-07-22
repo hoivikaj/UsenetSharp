@@ -53,7 +53,7 @@ if (!authentication.Success)
 }
 ```
 
-TLS always uses the platform's normal certificate chain and hostname validation.
+TLS uses the platform's normal certificate chain and hostname validation by default.
 Certificate revocation checking defaults to `X509RevocationMode.NoCheck` to avoid
 revocation lookup latency during frequent streaming reconnects. Applications
 that require revocation checking can enable it when constructing the client:
@@ -73,6 +73,23 @@ responder availability. `Offline` uses locally cached revocation information.
 The selected mode changes only revocation checking; normal platform certificate
 and hostname validation remains enabled. Credentials sent with `useSsl: false`
 travel in plaintext; only use an unencrypted connection on a network you trust.
+
+For a specific trusted server with a broken certificate, applications can opt
+out of certificate verification:
+
+```csharp
+using var client = new UsenetClient(new UsenetClientOptions
+{
+    SkipTlsVerification = true
+});
+```
+
+This keeps TLS encryption enabled but disables both certificate-chain and
+hostname checks. It permits man-in-the-middle attacks and can expose NNTP
+credentials, so leave it disabled unless the server's certificate fault is
+understood and cannot be corrected. The option also disables certificate
+revocation lookup and applies to every host connected by that client instance;
+do not reuse a skip-enabled client for unrelated providers.
 
 ### Retrieve an article body
 

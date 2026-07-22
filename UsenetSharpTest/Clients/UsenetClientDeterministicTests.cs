@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using UsenetSharp.Clients;
@@ -2022,6 +2023,39 @@ public class UsenetClientDeterministicTests
         Assert.That(
             new UsenetClientOptions().CertificateRevocationCheckMode,
             Is.EqualTo(X509RevocationMode.NoCheck));
+    }
+
+    [Test]
+    public void Options_DefaultSkipTlsVerificationIsFalse()
+    {
+        Assert.That(new UsenetClientOptions().SkipTlsVerification, Is.False);
+    }
+
+    [Test]
+    public async Task ConnectAsync_RejectsSelfSignedTlsCertificateByDefault()
+    {
+        await using var server = ScriptedNntpServer.StartTlsConnectionScript(
+            (_, _, _) => Task.CompletedTask);
+        await using var client = new UsenetClient();
+
+        Assert.ThrowsAsync<AuthenticationException>(async () =>
+            await client.ConnectAsync("127.0.0.1", server.Port, true, CancellationToken.None));
+    }
+
+    [Test]
+    public async Task ConnectAsync_AcceptsSelfSignedTlsCertificateWhenVerificationSkipped()
+    {
+        await using var server = ScriptedNntpServer.StartTlsConnectionScript(
+            (_, _, _) => Task.CompletedTask);
+        await using var client = new UsenetClient(new UsenetClientOptions
+        {
+            SkipTlsVerification = true,
+            CertificateRevocationCheckMode = X509RevocationMode.Online,
+        });
+
+        await client.ConnectAsync("127.0.0.1", server.Port, true, CancellationToken.None);
+
+        Assert.That(client.IsConnected, Is.True);
     }
 
     [TestCase(X509RevocationMode.NoCheck)]
