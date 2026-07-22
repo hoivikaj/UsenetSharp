@@ -2049,7 +2049,8 @@ public class UsenetClientDeterministicTests
             (_, _, _) => Task.CompletedTask);
         await using var client = new UsenetClient(new UsenetClientOptions
         {
-            SkipTlsVerification = true
+            SkipTlsVerification = true,
+            CertificateRevocationCheckMode = X509RevocationMode.Online,
         });
 
         await client.ConnectAsync("127.0.0.1", server.Port, true, CancellationToken.None);

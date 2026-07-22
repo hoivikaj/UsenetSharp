@@ -87,7 +87,9 @@ using var client = new UsenetClient(new UsenetClientOptions
 This keeps TLS encryption enabled but disables both certificate-chain and
 hostname checks. It permits man-in-the-middle attacks and can expose NNTP
 credentials, so leave it disabled unless the server's certificate fault is
-understood and cannot be corrected.
+understood and cannot be corrected. The option also disables certificate
+revocation lookup and applies to every host connected by that client instance;
+do not reuse a skip-enabled client for unrelated providers.
 
 ### Retrieve an article body
 
